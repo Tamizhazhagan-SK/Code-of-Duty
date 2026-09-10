@@ -1,0 +1,13 @@
+{
+  "name": "sentinel-security",
+  "owner": "<org>",
+  "plugins": [
+    {
+      "name": "sentinel",
+      "source": "./",
+      "description": "Local-first pre-commit secret & PII sanitizer.",
+      "strict": false,
+      "skills": ["./skill"]
+    }
+  ]
+}

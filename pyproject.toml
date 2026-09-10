@@ -1,0 +1,26 @@
+[project]
+name = "sentinel-sanitizer"
+version = "0.1.0"
+description = "Local-first pre-commit secret & PII sanitizer agent"
+requires-python = ">=3.11"
+dependencies = [
+  "detect-secrets>=1.5",
+  "presidio-analyzer>=2.2",
+  "presidio-anonymizer>=2.2",
+  "rich>=13",
+  "pyyaml>=6",
+  "pydantic>=2",
+]
+[project.optional-dependencies]
+llm = ["ollama>=0.3"]           # optional; tool works without it
+dev = ["pytest", "mypy", "ruff", "pre-commit"]
+
+[project.scripts]
+sentinel = "sentinel.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sentinel"]
