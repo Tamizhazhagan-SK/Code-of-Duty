@@ -1,0 +1,20 @@
+# User-facing policy config (checked in, reviewed like code).
+version: 1
+model:
+  enabled: true
+  runtime: ollama            # ollama | llama-cpp | off
+  name: qwen2.5-coder:3b-instruct-q4_K_M
+  # Pin the model file hash; load is refused on mismatch.
+  sha256: "REPLACE_WITH_PINNED_MODEL_HASH"
+  timeout_seconds: 4
+  max_context_lines: 6       # how much code window the model may see (redacted)
+policy:
+  # decision thresholds; see docs/POLICY.md
+  block_severity: [critical, high]
+  warn_severity: [medium]
+  pii:
+    locales: [en, en_IN]     # India: enable Aadhaar/PAN recognizers
+    action_in_tests: replace_synthetic
+    action_in_config: env_reference
+exceptions:
+  ttl_days: 30               # time-bound; re-review required after expiry

@@ -1,0 +1,33 @@
+# --- environment / secrets (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+id_rsa*
+secrets/
+credentials.json
+
+# --- local model artifacts (large + licensed; fetch via script) ---
+models/
+*.gguf
+*.bin
+
+# --- Sentinel local state ---
+.sentinel-cache/
+.sentinel/audit.log
+
+# --- python ---
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# NOTE: .secrets.baseline IS committed on purpose — it stores hashed
+# fingerprints, not plaintext, and is how known findings are suppressed.

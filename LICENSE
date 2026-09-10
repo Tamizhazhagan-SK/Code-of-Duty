@@ -1,0 +1,7 @@
+                               Apache License
+                         Version 2.0, January 2004
+
+PLACEHOLDER — choose a license deliberately (see CONTRIBUTING.md > IP & Licensing).
+Apache-2.0 is a good default for a security tool (explicit patent grant).
+If this is employer / hackathon IP, confirm ownership first; the correct file
+may be a proprietary internal license instead of Apache-2.0.

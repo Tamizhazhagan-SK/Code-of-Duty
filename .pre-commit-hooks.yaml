@@ -1,0 +1,13 @@
+# This file makes THIS repo consumable as a hook by OTHER repos:
+#   repos:
+#     - repo: https://github.com/<org>/sentinel
+#       rev: v0.1.0
+#       hooks: [{ id: sentinel }]
+- id: sentinel
+  name: Sentinel secret & PII sanitizer
+  entry: sentinel run
+  language: python
+  # Only staged files are passed by pre-commit; we still re-derive the diff.
+  pass_filenames: true
+  stages: [pre-commit]
+  require_serial: true   # interactive prompts need a single process
