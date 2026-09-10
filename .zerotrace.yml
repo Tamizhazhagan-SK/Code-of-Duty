@@ -6,7 +6,8 @@ model:
   name: qwen2.5-coder:3b-instruct-q4_K_M
   # Pin the model file hash; load is refused on mismatch.
   sha256: "REPLACE_WITH_PINNED_MODEL_HASH"
-  timeout_seconds: 4
+  timeout_seconds: 20         # CPU inference + cold model load can be slow; warm the
+                              # model first (see demo/setup_demo_repo.ps1) for a snappy demo
   max_context_lines: 6       # how much code window the model may see (redacted)
 policy:
   # decision thresholds; see docs/POLICY.md

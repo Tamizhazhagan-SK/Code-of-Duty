@@ -1,0 +1,20 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: zerotrace-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./ollama-entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/bin/bash", "/entrypoint.sh"]
+    environment:
+      - ZEROTRACE_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  ollama-data:

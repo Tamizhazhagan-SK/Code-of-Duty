@@ -1,5 +1,5 @@
 ---
-name: sentinel-sanitizer
+name: zerotrace-sanitizer
 description: >
   Scan the staged git diff for secrets and PII before commit, explain each risk,
   and propose a human-approved remediation. Local-first: no code or candidate
@@ -8,7 +8,7 @@ description: >
 license: See repository LICENSE
 ---
 
-# Sentinel — pre-commit secret & PII sanitizer (Agent Skill)
+# ZeroTrace — pre-commit secret & PII sanitizer (Agent Skill)
 
 Use this skill to run a local secret/PII gate over staged changes.
 
@@ -17,7 +17,7 @@ Use this skill to run a local secret/PII gate over staged changes.
 - When reviewing a diff for hardcoded credentials, connection strings, or PII.
 
 ## How to run
-1. `sentinel run` scans `git diff --cached` only.
+1. `zerotrace run` scans `git diff --cached` only.
 2. Report each finding with: file, kind, severity, and WHY it is risky.
 3. For each, show the proposed safe replacement (env ref / synthetic PII / vault URI).
 4. **Never** apply a fix without explicit user approval; never echo the raw value.
@@ -28,4 +28,4 @@ Use this skill to run a local secret/PII gate over staged changes.
 - If anything errors, fail closed: block/warn, don't allow.
 
 ## Bundled
-- `scripts/` — thin wrappers around the `sentinel` CLI.
+- `scripts/` — thin wrappers around the `zerotrace` CLI.

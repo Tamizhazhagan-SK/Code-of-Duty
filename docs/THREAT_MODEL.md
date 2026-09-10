@@ -21,5 +21,5 @@ and the tool's own integrity (it runs on every commit).
 | **Bypass** (`--no-verify`) | Documented as expected; real enforcement is server-side (push protection / CI re-scan). Client hook is advisory. |
 
 ## Explicit non-goals
-Sentinel is not a DLP platform, not a compliance certification, and not a
+ZeroTrace is not a DLP platform, not a compliance certification, and not a
 substitute for server-side secret scanning and secret rotation.

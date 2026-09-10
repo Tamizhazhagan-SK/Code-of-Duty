@@ -1,9 +1,9 @@
 {
-  "name": "sentinel-security",
-  "owner": "<org>",
+  "name": "bmw-skills-marketplace",
+  "owner": "BMW TechWorks",
   "plugins": [
     {
-      "name": "sentinel",
+      "name": "zerotrace",
       "source": "./",
       "description": "Local-first pre-commit secret & PII sanitizer.",
       "strict": false,

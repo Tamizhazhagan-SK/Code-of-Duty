@@ -1,0 +1,3 @@
+Found existing installation: sentinel-sanitizer 0.1.0
+Uninstalling sentinel-sanitizer-0.1.0:
+  Successfully uninstalled sentinel-sanitizer-0.1.0
