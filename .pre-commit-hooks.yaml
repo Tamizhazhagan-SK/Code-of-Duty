@@ -1,11 +1,11 @@
 # This file makes THIS repo consumable as a hook by OTHER repos:
 #   repos:
-#     - repo: https://github.com/<org>/sentinel
+#     - repo: https://github.com/<org>/zerotrace
 #       rev: v0.1.0
-#       hooks: [{ id: sentinel }]
-- id: sentinel
-  name: Sentinel secret & PII sanitizer
-  entry: sentinel run
+#       hooks: [{ id: zerotrace }]
+- id: zerotrace
+  name: ZeroTrace secret & PII sanitizer
+  entry: zerotrace run
   language: python
   # Only staged files are passed by pre-commit; we still re-derive the diff.
   pass_filenames: true

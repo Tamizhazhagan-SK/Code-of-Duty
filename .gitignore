@@ -15,9 +15,9 @@ models/
 *.gguf
 *.bin
 
-# --- Sentinel local state ---
-.sentinel-cache/
-.sentinel/audit.log
+# --- ZeroTrace local state ---
+.zerotrace-cache/
+.zerotrace/
 
 # --- python ---
 .venv/

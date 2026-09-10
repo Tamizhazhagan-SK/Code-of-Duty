@@ -1,6 +1,6 @@
 # Security Policy
 
-Sentinel runs on every commit with read access to your staged code, and can
+ZeroTrace runs on every commit with read access to your staged code, and can
 optionally invoke a local model. It is a piece of security-critical tooling,
 so its own supply chain matters as much as what it detects.
 

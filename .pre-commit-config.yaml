@@ -2,9 +2,9 @@
 repos:
   - repo: local
     hooks:
-      - id: sentinel
-        name: sentinel (self)
-        entry: uv run sentinel run
+      - id: zerotrace
+        name: zerotrace (self)
+        entry: uv run zerotrace run
         language: system
         pass_filenames: true
   - repo: https://github.com/Yelp/detect-secrets

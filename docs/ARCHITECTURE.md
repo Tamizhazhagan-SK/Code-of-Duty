@@ -7,7 +7,7 @@ Detection runs cheap-and-deterministic first; the LLM is a last-resort tie-break
 
 ```
 git commit
-   -> pre-commit hook -> `sentinel run`
+   -> pre-commit hook -> `zerotrace run`
         1. collectors/staged_diff.py     git diff --cached (added lines only)
         2. detectors/secrets.py          detect-secrets (regex + entropy + keyword)
            detectors/pii.py              Presidio (NER + regex + context)
@@ -39,13 +39,13 @@ for the *server-side* defense-in-depth layer (see `docs/ADR/0001`).
 
 ## The hard practical detail: interactivity
 pre-commit hooks do **not** reliably get a TTY (IDE/GUI git clients run them
-headless). So Sentinel has two modes:
+headless). So ZeroTrace has two modes:
 - **Interactive (TTY present):** explain -> preview -> `[R/V/E/A]` -> apply.
 - **Non-interactive (no TTY):** block with the explanation + exact command to run
-  (`sentinel review`) to remediate. Never guess an approval.
+  (`zerotrace review`) to remediate. Never guess an approval.
 
 ## Performance budget (< 2s typical)
 - Scan staged diff only, added lines only.
-- Cache by blob hash (`sha256` of staged content) in `.sentinel-cache/`.
+- Cache by blob hash (`sha256` of staged content) in `.zerotrace-cache/`.
 - **Lazy-load the model** — never load the 3B model unless at least one MEDIUM
   finding exists. Most commits never touch the LLM.
