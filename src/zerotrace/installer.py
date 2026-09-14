@@ -157,9 +157,24 @@ def _git_config(scope: str, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "config", f"--{scope}", *args], capture_output=True, text=True)
 
 
+def _checked_hooks_dir(hooks_dir: str) -> str:
+    """Resolve the target and refuse to write into a directory holding unrelated files."""
+    resolved = os.path.realpath(os.path.expanduser(hooks_dir))
+    if os.path.isdir(resolved) and not is_managed(resolved):
+        unexpected = sorted(set(os.listdir(resolved)) - set(HOOK_NAMES) - {MARKER})
+        if unexpected:
+            raise PermissionError(
+                f"{resolved} already contains {', '.join(unexpected[:3])}"
+                f"{'…' if len(unexpected) > 3 else ''}; refusing to write hook scripts there. "
+                "Point --hooks-dir at a dedicated directory.")
+    elif os.path.exists(resolved):
+        raise PermissionError(f"{resolved} exists and is not a directory")
+    return resolved
+
+
 def install(scope: str = "global", hooks_dir: str | None = None) -> list[str]:
     """scope: global | system. Returns human-readable log lines."""
-    hooks_dir = os.path.abspath(hooks_dir or default_hooks_dir(scope))
+    hooks_dir = _checked_hooks_dir(hooks_dir or default_hooks_dir(scope))
     log: list[str] = []
     current = gitutil.config_get("core.hooksPath", scope)
     state = _load_state()

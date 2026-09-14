@@ -7,7 +7,9 @@ import subprocess
 # Revisions reach a git command line, and they come from argv (`scan --range`) or from the
 # pre-push hook's stdin. Allow only the characters git revision syntax actually needs, and
 # never a leading "-" (which git would read as an option).
-_REV_RE = re.compile(r"\A(?!-)[A-Za-z0-9._/^~@{}\-]{1,255}\Z")
+_REV_RE = re.compile(r"(?!-)[A-Za-z0-9._/^~@{}\-]{1,255}")
+# Repo-relative paths as git prints them: no NUL, no newline, not starting with "-".
+_PATH_RE = re.compile(r"(?!-)[^\x00\n\r]{1,4096}")
 
 
 class GitError(RuntimeError):
@@ -15,18 +17,36 @@ class GitError(RuntimeError):
 
 
 def checked_rev(rev: str) -> str:
-    """Return `rev` if it is a plausible revision/range, else raise."""
-    if not _REV_RE.match(rev or ""):
+    """Return a revision/range built from the allow-listed match, or raise.
+
+    The returned string is rebuilt from the regex match rather than passed through, so an
+    unvalidated value can never reach a git command line.
+    """
+    match = _REV_RE.fullmatch(rev or "")
+    if match is None:
         raise GitError(f"refusing to run git with an unexpected revision: {rev!r}")
-    return rev
+    return match.group(0)
 
 
 def checked_path(path: str) -> str:
-    """Repo-relative path from a diff. No option-like or parent-escaping paths."""
-    if not path or path.startswith("-") or os.path.isabs(path) \
-            or ".." in path.replace("\\", "/").split("/"):
+    """Repo-relative path from a diff: no option-like, absolute or parent-escaping paths."""
+    match = _PATH_RE.fullmatch(path or "")
+    if match is None or os.path.isabs(path) or ".." in path.replace("\\", "/").split("/"):
         raise GitError(f"refusing to run git with an unexpected path: {path!r}")
-    return path
+    return match.group(0)
+
+
+def resolved_in_repo(path: str) -> str:
+    """Absolute path for a repo-relative path, proven to stay inside the work tree.
+
+    Symlinks are resolved first, so a symlinked file in the index cannot redirect a write
+    (or a read) outside the repository.
+    """
+    root = os.path.realpath(repo_root())
+    full = os.path.realpath(os.path.join(root, checked_path(path)))
+    if full != root and not full.startswith(root + os.sep):
+        raise GitError(f"refusing to touch {path!r}: it resolves outside the repository")
+    return full
 
 
 def git(*args: str, input_bytes: bytes | None = None, check: bool = True) -> str:

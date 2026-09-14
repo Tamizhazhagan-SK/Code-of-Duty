@@ -83,3 +83,41 @@ def test_eval_values_use_the_csprng():
     source = inspect.getsource(evals)
     assert "random.shuffle" not in source or "SystemRandom" in source
     assert Fake.github().startswith("ghp_")
+
+
+def test_writes_cannot_escape_the_repository(repo):
+    from zerotrace import gitutil
+    from zerotrace.remediation import applier
+
+    outside = repo.parent / "outside.txt"
+    outside.write_text("untouched\n")
+    os.symlink(outside, repo / "link.txt")
+    write(repo / "real.txt", "x = 1\n")
+    subprocess.run(["git", "add", "-A"], check=True)
+
+    # A symlink in the index resolves outside the work tree: refuse to touch it. (git also
+    # stores the link target as the blob, so the apply would fail the staleness check too.)
+    with pytest.raises(gitutil.GitError):
+        gitutil.resolved_in_repo("link.txt")
+    with pytest.raises((gitutil.GitError, applier.StaleIndexError)):
+        applier.apply("link.txt", 1, "y = 2", "x = 1")
+    for escape in ("../outside.txt", "/etc/passwd", "-rf"):
+        with pytest.raises(gitutil.GitError):
+            gitutil.resolved_in_repo(escape)
+    assert outside.read_text() == "untouched\n"
+
+
+def test_install_refuses_a_directory_that_holds_other_files(git_env, tmp_path):
+    target = tmp_path / "not-a-hooks-dir"
+    target.mkdir()
+    (target / "id_rsa").write_text("important\n")
+    with pytest.raises(PermissionError, match="id_rsa"):
+        installer.install("global", str(target))
+    assert (target / "id_rsa").read_text() == "important\n"
+    assert not (target / "pre-commit").exists()
+
+
+def test_eval_rejects_a_missing_cases_file():
+    from zerotrace import evals
+    with pytest.raises(SystemExit):
+        evals.load_cases("/nonexistent/cases.jsonl")

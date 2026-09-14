@@ -4,6 +4,7 @@ Values are generated at run time, so the repo holds no realistic-looking secrets
 Labels: real (must not be allowed), placeholder / fixture (ideally allowed).
 """
 import json
+import os
 import secrets
 import statistics
 import string
@@ -48,7 +49,10 @@ def _gen(spec: str) -> str:
 
 def load_cases(path: str | None) -> list[dict]:
     if path:
-        with open(path, encoding="utf-8") as f:
+        resolved = os.path.realpath(os.path.expanduser(path))
+        if not os.path.isfile(resolved):
+            raise SystemExit(f"zerotrace eval: no such cases file: {path}")
+        with open(resolved, encoding="utf-8") as f:
             text = f.read()
     else:
         text = resources.files("zerotrace.evals").joinpath("classifier_cases.jsonl").read_text("utf-8")
