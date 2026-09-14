@@ -17,7 +17,8 @@ Use this skill to run a local secret/PII gate over staged changes.
 - When reviewing a diff for hardcoded credentials, connection strings, or PII.
 
 ## How to run
-1. `zerotrace run` scans `git diff --cached` only.
+1. `zerotrace scan --staged --format json` scans `git diff --cached` only (added lines) and
+   returns findings as fingerprints, never values. `zerotrace doctor` checks the install.
 2. Report each finding with: file, kind, severity, and WHY it is risky.
 3. For each, show the proposed safe replacement (env ref / synthetic PII / vault URI).
 4. **Never** apply a fix without explicit user approval; never echo the raw value.

@@ -3,49 +3,55 @@
 ## One question, layered answer
 > *Is this staged change safe to add to history, and if not, what is the safest fix?*
 
-Detection runs cheap-and-deterministic first; the LLM is a last-resort tie-breaker.
+Detection runs cheap and deterministic first. The LLM is a last-resort tie-breaker for
+ambiguous findings, and it only ever sees redacted features.
 
 ```
-git commit
-   -> pre-commit hook -> `zerotrace run`
-        1. collectors/staged_diff.py     git diff --cached (added lines only)
-        2. detectors/secrets.py          detect-secrets (regex + entropy + keyword)
-           detectors/pii.py              Presidio (NER + regex + context)
-        3. policy/engine.py              severity x confidence -> BLOCK/WARN/ALLOW
-        4. classifier/*  (only MEDIUM)   redact -> local Qwen -> validated JSON
-        5. remediation/proposer.py       build a diff preview
-        6. ui/terminal.py                explain + ask for approval (TTY)
-        7. remediation/applier.py        edit + `git add` only approved lines
-        8. audit/*                       fingerprinted, redacted record
+git commit ─► global core.hooksPath shim (chains repo/previous hooks, reattaches /dev/tty)
+   └─► zerotrace run --hook
+        1. collectors/staged_diff.py      staged diff -> added lines + window (also: a commit, a tree)
+        2. detectors/
+             sensitive_files.py           .env, keys, keystores, tfstate, kubeconfig (whole file)
+             rulepack.py + rules/*.yml    provider formats: AWS, GitHub, OpenAI, Stripe, DB URIs…
+             code_assign.py               <credential identifier> = "<literal>", any language
+             secrets.py                   detect-secrets (entropy, keywords, JWT, private keys)
+             pii.py                       email/phone/QX-ID/PAN/Aadhaar/card/IBAN (+ opt-in Presidio)
+        3. pipeline.postprocess           placeholder/UUID/lockfile filters, test/docs downgrade,
+                                          .secrets.baseline, dedupe (highest severity per line)
+        4. classifier/batch.py            MEDIUM only: concurrent, cached, one deadline
+             redact.py -> prompt.py -> llm.py (Ollama | OpenAI-compatible) -> schema.py
+        5. policy/engine.py               BLOCK / WARN / ALLOW (the only decision point)
+        6. ui/terminal.py                 explain -> preview -> [V/R/U/E/A]
+        7. remediation/applier.py         patch the INDEX blob; mirror to work tree if identical
+        8. audit/                         hash-chained log + exceptions in .git/zerotrace/
+git push ─► pre-push shim ─► zerotrace pre-push   (every outgoing commit, deterministic only)
 ```
 
 ## Module map
-- `collectors/` — turns the staged diff into `(file, line, hunk-context)` units.
-- `detectors/` — each returns `Finding(rule_id, kind, severity, confidence, span)`.
-  Detectors never see approval logic; they only find.
-- `policy/engine.py` — the *only* place that decides block/warn/allow. Pure,
-  testable, deterministic. Consumes findings + config + (optional) LLM verdict.
-- `classifier/` — optional. `redact.py` runs **before** anything else here.
-- `remediation/` — proposes and (after approval) applies fixes; never auto-applies.
-- `audit/` — fingerprints + append-only redacted log; exceptions store.
-- `ui/` — `rich` rendering + interaction, with a non-interactive fallback.
+- `installer.py`: global/system/repo install, hook shims, chaining, uninstall/restore.
+- `config.py`: layered config (defaults ← org ← user ← repo) with org-locked keys.
+- `collectors/`: diff → `Unit(path, file_class, line_no, text, window, rev)` + `Changeset`.
+- `detectors/`: each returns `Finding(rule_id, kind, severity, confidence, …)`. Detectors
+  never decide policy.
+- `pipeline.py`: one path for `run`, `review`, `scan` and `pre-push`.
+- `policy/engine.py`: pure decision function with asymmetric model trust (ADR 0002).
+- `classifier/`: optional. `redact.py` runs before anything else in here.
+- `remediation/`: language-aware proposals, index-safe application, unstage + gitignore.
+- `doctor.py`, `evals/`: health checks and classifier measurement.
 
-## Why detect-secrets + Presidio
-detect-secrets is a *Python library* (not a separate binary), so it drops straight
-into the policy engine, emits JSON, supports a hashed `.secrets.baseline`, runs
-offline, and lets you add custom filters/plugins. Presidio gives NER-based PII with
-pluggable recognizers (add Aadhaar/PAN for India). Gitleaks/trufflehog remain great
-for the *server-side* defense-in-depth layer (see `docs/ADR/0001`).
+## Where state lives
+Audit log, exceptions and the verdict cache live in `.git/zerotrace/`, inside the git dir, so a
+global install never leaves untracked files in anyone's work tree. The repo policy
+(`.zerotrace.yml`) and `.secrets.baseline` (hashes only) are committed and reviewed like code.
 
-## The hard practical detail: interactivity
-pre-commit hooks do **not** reliably get a TTY (IDE/GUI git clients run them
-headless). So ZeroTrace has two modes:
-- **Interactive (TTY present):** explain -> preview -> `[R/V/E/A]` -> apply.
-- **Non-interactive (no TTY):** block with the explanation + exact command to run
-  (`zerotrace review`) to remediate. Never guess an approval.
+## Interactivity
+Git runs hooks with stdout on the terminal but not always stdin. The shim reattaches
+`/dev/tty` when a terminal exists, so the fix menu appears inside `git commit`. IDEs and GUI
+clients get a headless report plus `zerotrace review`. An approval is never guessed.
 
-## Performance budget (< 2s typical)
-- Scan staged diff only, added lines only.
-- Cache by blob hash (`sha256` of staged content) in `.zerotrace-cache/`.
-- **Lazy-load the model** — never load the 3B model unless at least one MEDIUM
-  finding exists. Most commits never touch the LLM.
+## Performance budget
+- Added lines only; provider rules are keyword-prefiltered.
+- A typical blocked commit takes about 100 ms (measured in the demo). The model loads lazily,
+  only when a MEDIUM finding exists, and stays warm with `keep_alive`. Verdicts are cached per
+  finding fingerprint.
+- Presidio/spaCy is never imported unless opted in (importing it costs seconds).

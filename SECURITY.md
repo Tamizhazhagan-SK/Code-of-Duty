@@ -9,15 +9,16 @@ Email security@<org>.example with details. Do **not** open a public issue for
 anything exploitable. We aim to acknowledge within 3 business days.
 
 ## Guarantees this tool tries to keep
-- **No egress.** Core detection and the optional local model never make network
-  calls. `detect-secrets` online verification is disabled. CI verifies this with
-  a sandbox that fails the build on any outbound socket.
+- **No raw values leave the machine.** Detection is fully offline (`detect-secrets`
+  verification disabled). The default model endpoint is loopback-only and bypasses proxies.
+  An optional remote endpoint (e.g. company-hosted on AWS) must be explicitly allowed, must
+  use https, and only ever receives redacted shape features.
 - **No plaintext secret persistence.** Nothing writes a raw candidate to disk or
   logs. Baselines and exceptions store salted fingerprints only.
 - **Fail closed.** Scanner crash, model timeout, or unparseable model output ->
   block/warn, never silently allow.
-- **Pinned integrity.** Dependencies are hash-locked; the local model file is
-  verified against a pinned SHA-256 before load.
+- **Pinned integrity.** The served model digest is checked against the pin in
+  `.zerotrace.yml` (`zerotrace doctor --pin-model`); on mismatch the model is not used.
 
 ## Non-guarantees (be honest)
 - A client-side hook can be bypassed (`git commit --no-verify`, direct plumbing).

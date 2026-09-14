@@ -1,15 +1,21 @@
 # Policy engine
 
-Deterministic mapping from findings to an action. Pure function, fully unit-tested.
+`policy/engine.py` is the single source of the pass/fail signal. It is a pure function that is
+fully unit-tested.
 
-| Finding | Confidence | Action |
+| Finding | Examples | Action |
 |---|---|---|
-| Private key / clear API key / cloud credential | High | **Block** |
-| Password in config / connection string | High | **Block** |
-| Likely customer PII in code/config | Medium | **Warn** (confirm or replace) |
-| Realistic-looking value, ambiguous | Medium | -> LLM tie-break, else Warn |
-| Placeholder / public example / seeded fixture | Low | Allow (auditable exception) |
+| Provider-format credential | AWS, GitHub, OpenAI, Anthropic, Stripe live, Slack, Vault, private keys | **Block** (critical) |
+| Credential in config / code, random-looking | `clientSecret = "<28 random chars>"`, DB URI with password, `ENV API_TOKEN=…` | **Block** (high) |
+| Sensitive file staged | `.env`, `id_rsa`, `*.pem` with a private key, keystores, `terraform.tfstate` | **Block** → [U]nstage |
+| Internal PII | employee email domain, QX-ID, PAN, Aadhaar, card, IBAN | **Block** (high) |
+| Ambiguous value | short token, dev-looking secret, entropy-only string, credential in a test file | **AI tie-break** → allow / warn / block |
+| Generic PII | customer-looking email, phone | **Warn** (confirm or replace) |
+| Placeholder / public example / known test card | `${VAR}`, `<your-key>`, `changeme`, `4242…` | Allow (recorded) |
 
-Inputs: `rule_id`, `kind`, `entropy`, `file_class`, `confidence`, config
-thresholds, optional LLM verdict. Output: `Decision(action, severity, reason)`.
-The engine is the single source of the pass/fail signal; nothing else decides.
+Modifiers:
+- **Test/docs paths** lower heuristic findings one level. Provider formats and PII stay.
+- **Exceptions** (`[E]`) are time-bound (`exceptions.ttl_days`), need a reason, and are scoped to
+  the exact line (they auto-expire if the line changes).
+- **`.secrets.baseline`** (hashed) suppresses reviewed pre-existing values for every detector.
+- `critical` is always in `block_severity`, and org policy can lock the rest.
