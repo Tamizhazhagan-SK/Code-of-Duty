@@ -1,5 +1,4 @@
 """Policy is pure -> the easiest and most important thing to test hard."""
-import pytest
 
 from zerotrace.config import Config
 from zerotrace.detectors import Finding
@@ -60,3 +59,28 @@ def test_active_exception_allows_any_severity(tmp_path, monkeypatch):
 
     decision = decide(finding, Config())
     assert decision.action == "allow"
+
+
+class _V:
+    def __init__(self, classification, confidence, reason="r"):
+        self.classification, self.confidence, self.reason = classification, confidence, reason
+
+
+def test_model_may_escalate_medium_to_block(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    decision = decide(_finding("medium"), Config(), verdict=_V("REAL_SECRET", 0.9))
+    assert decision.action == "block"
+
+
+def test_escalation_can_be_disabled(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    decision = decide(_finding("medium"), Config(model_can_escalate=False),
+                      verdict=_V("REAL_SECRET", 0.95))
+    assert decision.action == "warn"
+
+
+def test_low_confidence_placeholder_verdict_still_warns(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    decision = decide(_finding("medium"), Config(),
+                      verdict=_V("TEST_FIXTURE_OR_PLACEHOLDER", 0.4))
+    assert decision.action == "warn"
