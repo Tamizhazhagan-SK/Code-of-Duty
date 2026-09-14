@@ -13,6 +13,11 @@ def _unit(path: str, text: str) -> Unit:
     return Unit(path=path, file_class=classify_file(path), line_no=1, text=text, window=text)
 
 
+def _uri(scheme: str, user: str, password: str, host: str = "db.internal:5432/app") -> str:
+    """Build a credential-bearing URI at run time; never store one as a literal."""
+    return scheme + "://" + user + ":" + password + "@" + host
+
+
 def _scan(path: str, text: str):
     u = [_unit(path, text)]
     cfg = Config()
@@ -42,14 +47,14 @@ def test_provider_tokens_block_anywhere_in_code(make, rule):
 
 
 def test_connection_string_with_password():
-    line = f'DB = "postgres://svc:{rand(14)}@db.internal:5432/app"'
+    line = f'DB = "{_uri("postgres", "svc", rand(14))}"'
     (f,) = _scan("db.py", line)
     assert f.rule_id == "connection-string-with-password" and f.severity == "high"
 
 
 def test_connection_string_placeholder_password_is_ignored():
-    assert _scan("db.py", 'DB = "postgres://svc:${DB_PASSWORD}@db.internal/app"') == []
-    assert _scan("db.py", 'DB = "postgres://svc:<password>@db.internal/app"') == []
+    for placeholder in ("${DB_PASSWORD}", "<password>", "changeme"):
+        assert _scan("db.py", f'DB = "{_uri("postgres", "svc", placeholder)}"') == []
 
 
 def test_aws_documentation_example_key_is_a_placeholder():
@@ -192,7 +197,7 @@ def test_pii_findings():
 def test_pii_non_person_emails_are_ignored():
     assert _scan("README.md", "git clone git@github.com:acme/repo.git") == []
     assert _scan("src/mail.py", 'sender = "noreply@acme.io"') == []
-    assert _scan("db.py", 'DB = "mysql://root:${PW}@db.internal/app"') == []
+    assert _scan("db.py", f'DB = "{_uri("mysql", "root", "${PW}")}"') == []
 
 
 def test_known_test_card_is_low_and_allowed():
@@ -210,7 +215,7 @@ def test_synthetic_replacements_never_retrigger():
 
 def test_prose_and_format_placeholders_are_not_secrets():
     assert _scan("app.py", '"password": "A password is required for this action.",') == []
-    assert _scan("t.py", 'DB = f"postgres://svc:{pw}@db.internal/app"') == []
+    assert _scan("t.py", f'DB = f"{_uri("postgres", "svc", "{pw}")}"') == []
 
 
 def test_stored_hashes_are_not_treated_as_secrets():
@@ -220,4 +225,4 @@ def test_stored_hashes_are_not_treated_as_secrets():
     assert _scan("lock.json", f'  "integrity": "{digest}"') == []
     # ...but the same shape bound to a live credential name still blocks.
     findings = _scan("app.py", f'api_key = "{digest}"')
-    assert findings and findings[0].severity == "high"
+    assert findings and findings[0].rule_id == "hardcoded-api-key"
