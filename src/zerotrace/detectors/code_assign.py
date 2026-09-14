@@ -141,7 +141,7 @@ def _score(value: str, strength: str, category: str) -> tuple[str, float] | None
     if strength == "strong":
         if length < 8:
             return None
-        if length >= 16 and ent >= 3.5:
+        if (length >= 16 and ent >= 3.5) or (length >= 32 and ent >= 3.0):
             return "high", 0.85
         if ent >= 3.0:
             return "medium", 0.6

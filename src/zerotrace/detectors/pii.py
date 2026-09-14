@@ -92,7 +92,7 @@ _URI_USERINFO_RE = re.compile(r"://[^\s/@]*$")
 
 def _email_finding(match: re.Match, unit: Unit) -> Finding | None:
     if _URI_USERINFO_RE.search(unit.text[:match.start()]):
-        return None  # `scheme://user:pass@host` is a credential, handled by the rule pack
+        return None  # userinfo in a URI is a credential; the rule pack handles it
     local, domain = match.group(0).rsplit("@", 1)
     domain = domain.lower()
     if local.lower() in _NON_PERSON_LOCALS:
