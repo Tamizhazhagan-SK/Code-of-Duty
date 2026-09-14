@@ -211,3 +211,13 @@ def test_synthetic_replacements_never_retrigger():
 def test_prose_and_format_placeholders_are_not_secrets():
     assert _scan("app.py", '"password": "A password is required for this action.",') == []
     assert _scan("t.py", 'DB = f"postgres://svc:{pw}@db.internal/app"') == []
+
+
+def test_stored_hashes_are_not_treated_as_secrets():
+    digest = rand(40, "0123456789abcdef")
+    assert _scan(".secrets.baseline", f'    "hashed_secret": "{digest}",') == []
+    assert _scan("app.py", f'password_digest = "{digest}"') == []
+    assert _scan("lock.json", f'  "integrity": "{digest}"') == []
+    # ...but the same shape bound to a live credential name still blocks.
+    findings = _scan("app.py", f'api_key = "{digest}"')
+    assert findings and findings[0].severity == "high"

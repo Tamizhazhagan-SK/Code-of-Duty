@@ -52,6 +52,7 @@ def test_pre_push_ignores_lines_that_are_not_object_ids(repo):
     assert result.returncode == 0
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows has no POSIX permission bits")
 def test_hooks_are_not_group_or_world_writable(git_env):
     installer.install("global")
     hooks = installer.default_hooks_dir("global")

@@ -10,7 +10,7 @@ from .detectors import SEVERITY_ORDER, Finding, downgrade
 from .detectors import code_assign, pii as pii_det, rulepack, secrets as secret_det
 from .detectors import sensitive_files
 from .detectors.filters import (
-    is_hash_context, is_lockfile, is_placeholder, is_uuid, looks_like_prose,
+    is_digest, is_hash_context, is_lockfile, is_placeholder, is_uuid, looks_like_prose,
 )
 from .policy.engine import Decision, decide
 
@@ -57,8 +57,12 @@ def postprocess(findings: list[Finding], cfg) -> list[Finding]:
         if f.severity != "critical" and f.source != "sensitive_files" and value:
             if is_placeholder(value) or is_uuid(value):
                 continue
-            if f.source in ("detect_secrets", "code_assign") and looks_like_prose(value):
-                continue  # "A password is required." is a message, not a password
+            if f.source in ("detect_secrets", "code_assign"):
+                if looks_like_prose(value):
+                    continue  # "A password is required." is a message, not a password
+                if is_digest(value) and (is_hash_context(f.line_text)
+                                         or is_hash_context(f.identifier)):
+                    continue  # "hashed_secret": "<sha1>" stores a hash, not the secret
             if f.rule_id in _ENTROPY_ONLY and (is_lockfile(f.path) or is_hash_context(f.line_text)):
                 continue
         # sha1 here is not a security control: it only has to match the hashes that
