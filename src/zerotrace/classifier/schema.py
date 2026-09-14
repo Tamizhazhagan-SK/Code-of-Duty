@@ -5,6 +5,19 @@ from dataclasses import dataclass
 
 ALLOWED = {"REAL_SECRET", "PII", "TEST_FIXTURE_OR_PLACEHOLDER", "UNKNOWN"}
 _MAX_REASON_WORDS = 20
+
+# Passed to the runtime for constrained decoding (Ollama `format`, OpenAI `response_format`).
+# parse() below still validates everything: the schema is a hint, not a trust boundary.
+JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "classification": {"type": "string", "enum": sorted(ALLOWED)},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "reason": {"type": "string", "maxLength": 160},
+    },
+    "required": ["classification", "confidence", "reason"],
+    "additionalProperties": False,
+}
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 _OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 # Small local models sometimes answer with a word instead of the requested
@@ -48,7 +61,7 @@ def parse(raw: str) -> "Verdict | None":
         confidence = _WORD_CONFIDENCE[raw_confidence.strip().lower()]
     else:
         try:
-            confidence = float(raw_confidence)
+            confidence = float(raw_confidence)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return None
     if not (0.0 <= confidence <= 1.0):

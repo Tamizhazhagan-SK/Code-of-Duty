@@ -1,20 +1,35 @@
+# Local inference for ZeroTrace's AI tie-break (Qwen2.5-Coder 3B via Ollama).
+#   docker compose -f docker/docker-compose.yml up -d
+# Only redacted *shape features* are ever sent to it; see docs/AI_CLASSIFIER.md.
+# On macOS, Docker has no Metal GPU, so native Ollama (`brew install ollama`) is several
+# times faster. On Windows/Linux with an NVIDIA GPU, uncomment the `deploy` block below.
 services:
   ollama:
     image: ollama/ollama:latest
     container_name: zerotrace-ollama
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"   # bind to loopback only: never expose the model on the LAN
     volumes:
       - ollama-data:/root/.ollama
-      - ./ollama-entrypoint.sh:/entrypoint.sh
+      - ./ollama-entrypoint.sh:/entrypoint.sh:ro
     entrypoint: ["/bin/bash", "/entrypoint.sh"]
     environment:
       - ZEROTRACE_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+      - OLLAMA_KEEP_ALIVE=30m       # keep the model in RAM between commits (no cold loads)
+      - OLLAMA_NUM_PARALLEL=4       # ZeroTrace classifies MEDIUM findings concurrently
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 12
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
 volumes:
   ollama-data:
