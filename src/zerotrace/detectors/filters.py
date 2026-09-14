@@ -37,9 +37,12 @@ _ENV_LOOKUP_RE = re.compile(
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 _HASH_CONTEXT_RE = re.compile(
     r"(integrity|sha1|sha256|sha512|checksum|digest|hash|commit|revision|\brev\b|etag|nonce|"
-    r"\btree\b|\boid\b|object id)",
+    r"\btree\b|\boid\b|object id|fingerprint)",
     re.I,
 )
+# Hex digests of the usual sizes: md5, sha1, sha224/256, sha384/512.
+_HEX_DIGEST_RE = re.compile(r"\A(?:[0-9a-f]{32}|[0-9a-f]{40}|[0-9a-f]{56}|[0-9a-f]{64}"
+                            r"|[0-9a-f]{96}|[0-9a-f]{128})\Z", re.I)
 _LOCKFILES = {
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "pipfile.lock",
     "go.sum", "cargo.lock", "composer.lock", "gemfile.lock", "uv.lock", "packages.lock.json",
@@ -77,6 +80,11 @@ def is_uuid(value: str) -> bool:
 
 def is_hash_context(line: str) -> bool:
     return bool(_HASH_CONTEXT_RE.search(line))
+
+
+def is_digest(value: str) -> bool:
+    """A hex digest. Storing one is not a credential leak (that is the point of hashing)."""
+    return bool(_HEX_DIGEST_RE.match(value.strip()))
 
 
 def is_lockfile(path: str) -> bool:

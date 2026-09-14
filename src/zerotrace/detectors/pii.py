@@ -15,7 +15,7 @@ _PHONE_RE = re.compile(
 )
 _PHONE_BARE_RE = re.compile(r"(?<![\w.])[6-9]\d{9}(?![\w.])")
 _PHONE_CONTEXT_RE = re.compile(r"(?i)(phone|mobile|tel\b|contact|whatsapp|cell)")
-# Internal company-issued identifier, e.g. QXZ7HDG
+# Internal company-issued identifier: "QX" followed by 5 upper-case alphanumerics.
 _QXID_RE = re.compile(r"\bQX[A-Z0-9]{5}\b")
 _PAN_RE = re.compile(r"\b[A-Z]{3}[ABCFGHLJPT][A-Z][0-9]{4}[A-Z]\b")
 _AADHAAR_RE = re.compile(r"(?<![\d-])[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}(?![\d-])")
