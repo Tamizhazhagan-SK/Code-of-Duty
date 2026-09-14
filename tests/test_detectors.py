@@ -226,3 +226,12 @@ def test_stored_hashes_are_not_treated_as_secrets():
     # ...but the same shape bound to a live credential name still blocks.
     findings = _scan("app.py", f'api_key = "{digest}"')
     assert findings and findings[0].rule_id == "hardcoded-api-key"
+
+
+def test_word_like_identifiers_are_not_credentials():
+    """A weak name ("...Key") plus a human-written value is a name, not a secret."""
+    assert _scan(".vscode/settings.json", '    "projectKey": "Tamizhazhagan-SK_Code-of-Duty"') == []
+    assert _scan("app.yml", "  cluster_key: acme-prod-cluster-eu-west") == []
+    # A strong name or a random value still blocks.
+    assert _scan("app.py", f'api_key = "{rand(24)}9aZ"')
+    assert _scan("app.yml", f"  cluster_key: {rand(28)}9aZ")

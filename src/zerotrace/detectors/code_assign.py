@@ -67,7 +67,11 @@ _EXCLUDE_LAST = {
     "reference", "arn", "region", "bucket", "owner", "sample", "example", "file_path",
 }
 _EXCLUDE_FIRST = {"is", "has", "show", "hide", "toggle", "validate", "check", "get", "set",
-                  "on", "handle", "use", "min", "max", "num", "no"}
+                  "on", "handle", "use", "min", "max", "num", "no", "project", "public",
+                  "sort", "primary", "foreign", "partition", "cache", "map", "index"}
+# Word-like identifiers ("Tamizhazhagan-SK_Code-of-Duty", "acme-prod-cluster"): human-written
+# names, not key material. Only used to reject WEAK matches such as a bare "key" in the name.
+_NAME_LIKE_RE = re.compile(r"\A[A-Za-z0-9]+(?:[-_.][A-Za-z0-9]+){1,}\Z")
 _BOOLISH = {"true", "false", "yes", "no", "on", "off", "null", "none", "nil", "undefined"}
 _I18N_KEY = re.compile(r"^[a-z][a-zA-Z_]*(\.[a-zA-Z_]+)+$")
 _TEMPLATED = re.compile(r"(\$\{|\{\{|#\{|%\(|\{[A-Za-z_][\w.]*\}|\$[A-Z_]{2,})")
@@ -146,9 +150,18 @@ def _score(value: str, strength: str, category: str) -> tuple[str, float] | None
         if ent >= 3.0:
             return "medium", 0.6
         return "low", 0.3
-    if length >= 20 and ent >= 4.0:
+    if length >= 20 and ent >= 4.0 and not _is_name_like(value):
         return "medium", 0.55
     return None
+
+
+def _is_name_like(value: str) -> bool:
+    """Separator-joined words, e.g. a project key or a cluster name."""
+    match = _NAME_LIKE_RE.match(value)
+    if not match:
+        return False
+    words = [w for w in re.split(r"[-_.]", value) if w]
+    return sum(1 for w in words if w.isalpha() and len(w) >= 3) >= 2
 
 
 def _value_is_benign(value: str) -> bool:
