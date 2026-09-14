@@ -32,44 +32,45 @@ class Verdict:
     reason: str
 
 
-def parse(raw: str) -> "Verdict | None":
+def _extract_object(raw: str) -> dict | None:
+    """Model output -> dict, tolerating code fences and surrounding prose."""
     text = raw.strip()
-    fence_match = _FENCE_RE.search(text)
-    if fence_match:
-        text = fence_match.group(1).strip()
-
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        object_match = _OBJECT_RE.search(text)
-        if not object_match:
-            return None
+    fence = _FENCE_RE.search(text)
+    if fence:
+        text = fence.group(1).strip()
+    for candidate in (text, None):
+        if candidate is None:
+            match = _OBJECT_RE.search(text)
+            if not match:
+                return None
+            candidate = match.group(0)
         try:
-            data = json.loads(object_match.group(0))
+            data = json.loads(candidate)
         except json.JSONDecodeError:
-            return None
+            continue
+        return data if isinstance(data, dict) else None
+    return None
 
-    if not isinstance(data, dict):
-        return None
 
-    classification = data.get("classification")
-    if classification not in ALLOWED:
-        return None
-
-    raw_confidence = data.get("confidence")
+def _confidence_of(raw_confidence) -> float | None:
     if isinstance(raw_confidence, str) and raw_confidence.strip().lower() in _WORD_CONFIDENCE:
-        confidence = _WORD_CONFIDENCE[raw_confidence.strip().lower()]
-    else:
-        try:
-            confidence = float(raw_confidence)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            return None
-    if not (0.0 <= confidence <= 1.0):
+        return _WORD_CONFIDENCE[raw_confidence.strip().lower()]
+    try:
+        confidence = float(raw_confidence)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
         return None
+    return confidence if 0.0 <= confidence <= 1.0 else None
 
+
+def parse(raw: str) -> "Verdict | None":
+    data = _extract_object(raw)
+    if data is None or data.get("classification") not in ALLOWED:
+        return None
+    confidence = _confidence_of(data.get("confidence"))
+    if confidence is None:
+        return None
     reason = data.get("reason")
     if not isinstance(reason, str) or not reason.strip():
         return None
-    reason = " ".join(reason.split()[:_MAX_REASON_WORDS])
-
-    return Verdict(classification=classification, confidence=confidence, reason=reason)
+    return Verdict(classification=data["classification"], confidence=confidence,
+                   reason=" ".join(reason.split()[:_MAX_REASON_WORDS]))

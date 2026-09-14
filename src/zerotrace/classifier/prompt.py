@@ -2,6 +2,7 @@
 import json
 
 PROMPT_VERSION = "2"
+NONE = "(none)"  # the model sees this instead of a missing feature
 
 SYSTEM = (
     "You are a security classifier inside a git pre-commit hook. You receive a FINDING "
@@ -25,7 +26,7 @@ SYSTEM = (
 _EXAMPLES = [
     (
         {"identifier": "clientSecret", "language": "javascript", "file_class": "code",
-         "known_public_prefix": "(none)",
+         "known_public_prefix": NONE,
          "value_shape": {"length": 32, "charset": "base62/64", "entropy_bits_per_char": 4.8,
                          "skeleton": "aAa9AaaA9aa9AAa9aAa9aaAA9aAaa9Aa",
                          "dictionary_word_ratio": 0.08, "most_common_char_ratio": 0.09},
@@ -36,7 +37,7 @@ _EXAMPLES = [
     ),
     (
         {"identifier": "api_key", "language": "python", "file_class": "test",
-         "known_public_prefix": "(none)",
+         "known_public_prefix": NONE,
          "value_shape": {"length": 20, "charset": "alnum", "entropy_bits_per_char": 3.1,
                          "skeleton": "aaaa-aaaa-aaa-aaaa99",
                          "dictionary_word_ratio": 0.93, "most_common_char_ratio": 0.15},
@@ -47,7 +48,7 @@ _EXAMPLES = [
     ),
     (
         {"identifier": "session_secret", "language": "python", "file_class": "code",
-         "known_public_prefix": "(none)",
+         "known_public_prefix": NONE,
          "value_shape": {"length": 24, "charset": "base62/64", "entropy_bits_per_char": 4.3,
                          "skeleton": "a9a-aAa9-9aAa-aa99aAa9aa",
                          "dictionary_word_ratio": 0.1, "most_common_char_ratio": 0.08},

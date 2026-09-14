@@ -67,6 +67,17 @@ def load_rules(extra: tuple[str, ...] = (), repo_root: str = "") -> tuple[Rule, 
     return tuple(rules)
 
 
+def _accepted(rule: Rule, match: re.Match) -> str | None:
+    """The value to report for this match, or None if it fails the rule's own checks."""
+    value = match.group(rule.secret_group) or ""
+    checked = match.group(rule.check_group) if rule.check_group is not None else value
+    if not value or not checked or is_placeholder(checked):
+        return None
+    if rule.min_entropy and shannon(checked) < rule.min_entropy:
+        return None
+    return value
+
+
 def scan_line(text: str, rules: tuple[Rule, ...]):
     """Yield (rule, secret_value, span) for every rule hit on one line."""
     lower = text.lower()
@@ -74,13 +85,9 @@ def scan_line(text: str, rules: tuple[Rule, ...]):
         if rule.keywords and not any(k in lower for k in rule.keywords):
             continue
         for match in rule.regex.finditer(text):
-            value = match.group(rule.secret_group) or ""
-            checked = match.group(rule.check_group) if rule.check_group is not None else value
-            if not value or not checked or is_placeholder(checked):
-                continue
-            if rule.min_entropy and shannon(checked) < rule.min_entropy:
-                continue
-            yield rule, value, match.span(rule.secret_group)
+            value = _accepted(rule, match)
+            if value is not None:
+                yield rule, value, match.span(rule.secret_group)
 
 
 def scan(units: list[Unit], cfg) -> list[Finding]:

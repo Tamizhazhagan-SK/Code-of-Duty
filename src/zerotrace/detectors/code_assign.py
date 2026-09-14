@@ -75,6 +75,9 @@ _NAME_LIKE_RE = re.compile(r"\A[A-Za-z0-9]+(?:[-_.][A-Za-z0-9]+){1,}\Z")
 _BOOLISH = {"true", "false", "yes", "no", "on", "off", "null", "none", "nil", "undefined"}
 _I18N_KEY = re.compile(r"^[a-z][a-zA-Z_]*(\.[a-zA-Z_]+)+$")
 _TEMPLATED = re.compile(r"(\$\{|\{\{|#\{|%\(|\{[A-Za-z_][\w.]*\}|\$[A-Z_]{2,})")
+# Regex/validation patterns bound to credential-ish names ("_PASSWORD_RE", "secretPattern")
+# are rules, not credentials.
+_REGEXISH = re.compile(r"(\\[dwsbAZ]|\.\*|\.\+|\[\^|\(\?|\{\d+,|\|\^|\^\(|\)\$)")
 _PATHISH = re.compile(
     r"(?:^(?:/|\./|\.\./|~/|[A-Za-z]:\\))"                 # absolute/relative path prefix
     r"|(?:\.(?:pem|key|crt|json|ya?ml|p12|pfx|txt)$)",     # or a filename suffix
@@ -134,22 +137,29 @@ def _vocab(words: list[str]) -> tuple[str, str] | None:
     return None
 
 
+def _score_password(length: int, ent: float, classes: int) -> tuple[str, float] | None:
+    if length < 4:
+        return None
+    if (length >= 8 and classes >= 3) or (length >= 12 and ent >= 3.3):
+        return "high", 0.85
+    return "medium", 0.6
+
+
+def _score_secret(length: int, ent: float) -> tuple[str, float] | None:
+    if length < 8:
+        return None
+    if (length >= 16 and ent >= 3.5) or (length >= 32 and ent >= 3.0):
+        return "high", 0.85
+    return ("medium", 0.6) if ent >= 3.0 else ("low", 0.3)
+
+
 def _score(value: str, strength: str, category: str) -> tuple[str, float] | None:
     length, ent, classes = len(value), shannon(value), char_classes(value)
-    if strength == "strong" and category == "password":
-        if length < 4:
-            return None
-        if (length >= 8 and classes >= 3) or (length >= 12 and ent >= 3.3):
-            return "high", 0.85
-        return "medium", 0.6
     if strength == "strong":
-        if length < 8:
-            return None
-        if (length >= 16 and ent >= 3.5) or (length >= 32 and ent >= 3.0):
-            return "high", 0.85
-        if ent >= 3.0:
-            return "medium", 0.6
-        return "low", 0.3
+        if category == "password":
+            return _score_password(length, ent, classes)
+        return _score_secret(length, ent)
+    # A weak name ("...Key") needs a clearly random value to count for anything.
     if length >= 20 and ent >= 4.0 and not _is_name_like(value):
         return "medium", 0.55
     return None
@@ -172,6 +182,8 @@ def _value_is_benign(value: str) -> bool:
         return True
     if _TEMPLATED.search(v) or _I18N_KEY.match(v) or _PATHISH.search(v):
         return True
+    if _REGEXISH.search(v) or (v.count("|") >= 2 and " " not in v):
+        return True  # a pattern such as "client-key-data|token:|password:"
     if v.lower().startswith(("http://", "https://")) and "@" not in v:
         return True
     # e.g. "password_reset", "auth.token"

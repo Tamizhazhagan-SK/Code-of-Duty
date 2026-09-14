@@ -16,6 +16,7 @@ from . import gitutil
 from .config import zerotrace_home
 
 MARKER = ".zerotrace-managed"
+HOOKS_PATH_KEY = "core.hooksPath"   # the git config key a global install owns
 HOOK_NAMES = (
     "applypatch-msg", "pre-applypatch", "post-applypatch", "pre-commit", "pre-merge-commit",
     "prepare-commit-msg", "commit-msg", "post-commit", "pre-rebase", "post-checkout",
@@ -176,7 +177,7 @@ def install(scope: str = "global", hooks_dir: str | None = None) -> list[str]:
     """scope: global | system. Returns human-readable log lines."""
     hooks_dir = _checked_hooks_dir(hooks_dir or default_hooks_dir(scope))
     log: list[str] = []
-    current = gitutil.config_get("core.hooksPath", scope)
+    current = gitutil.config_get(HOOKS_PATH_KEY, scope)
     state = _load_state()
     prev = ""
     if current and not is_managed(current):
@@ -190,27 +191,27 @@ def install(scope: str = "global", hooks_dir: str | None = None) -> list[str]:
 
     write_hooks(hooks_dir, prev, scope)
     log.append(f"wrote {len(HOOK_NAMES)} hook shims to {hooks_dir}")
-    result = _git_config(scope, "core.hooksPath", _sh_path(hooks_dir))
+    result = _git_config(scope, HOOKS_PATH_KEY, _sh_path(hooks_dir))
     if result.returncode != 0:
-        raise PermissionError(result.stderr.strip() or f"could not set {scope} core.hooksPath")
+        raise PermissionError(result.stderr.strip() or f"could not set {scope} {HOOKS_PATH_KEY}")
     state[f"{scope}_hooks_dir"] = hooks_dir
     _save_state(state)
-    log.append(f"git config --{scope} core.hooksPath {_sh_path(hooks_dir)}")
+    log.append(f"git config --{scope} {HOOKS_PATH_KEY} {_sh_path(hooks_dir)}")
     return log
 
 
 def uninstall(scope: str = "global") -> list[str]:
     log: list[str] = []
     state = _load_state()
-    current = gitutil.config_get("core.hooksPath", scope)
+    current = gitutil.config_get(HOOKS_PATH_KEY, scope)
     prev = state.pop(f"{scope}_previous_hooks_path", "")
     hooks_dir = state.pop(f"{scope}_hooks_dir", current or "")
     if current and is_managed(current):
         if prev:
-            _git_config(scope, "core.hooksPath", prev)
+            _git_config(scope, HOOKS_PATH_KEY, prev)
             log.append(f"restored {scope} core.hooksPath -> {prev}")
         else:
-            _git_config(scope, "--unset", "core.hooksPath")
+            _git_config(scope, "--unset", HOOKS_PATH_KEY)
             log.append(f"unset {scope} core.hooksPath")
     else:
         log.append(f"{scope} core.hooksPath is not managed by ZeroTrace; left unchanged")
@@ -228,8 +229,8 @@ def uninstall(scope: str = "global") -> list[str]:
 def install_repo() -> list[str]:
     """Per-repo install, e.g. for repos whose local core.hooksPath (husky) overrides global."""
     root = gitutil.repo_root()
-    local = gitutil.config_get("core.hooksPath", "local")
-    if not local and is_managed(gitutil.config_get("core.hooksPath")):
+    local = gitutil.config_get(HOOKS_PATH_KEY, "local")
+    if not local and is_managed(gitutil.config_get(HOOKS_PATH_KEY)):
         return ["this repo is already covered by the global/system ZeroTrace install"]
     if local and os.path.basename(local.rstrip("/\\")) == "_" and \
             os.path.basename(os.path.dirname(local.rstrip("/\\"))) == ".husky":

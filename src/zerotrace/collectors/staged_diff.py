@@ -60,76 +60,97 @@ def _unquote(path: str) -> str:
     return path
 
 
-def parse_diff(diff: str, rev: str = "") -> Changeset:
-    path: str | None = None
-    new_line_no = 0
-    in_hunk = False
-    file_lines: dict[str, list[tuple[int, str]]] = {}
-    added: list[tuple[str, int, str]] = []
-    paths: list[str] = []
+class _DiffReader:
+    """Small state machine over `git diff -U3` output: which file, which new-file line."""
 
-    for raw_line in diff.splitlines():
-        if raw_line.startswith("diff --git "):
-            path, in_hunk = None, False
-            continue
-        if not in_hunk:
-            plus = _PLUS_PATH_RE.match(raw_line)
-            if plus:
-                quoted, bare = plus.groups()
-                path = _unquote(f'"{quoted}"') if quoted else bare.rstrip("\t")
-                file_lines.setdefault(path, [])
-                paths.append(path)
-                continue
-            if raw_line.startswith("Binary files ") and " and b/" in raw_line:
-                bin_path = raw_line.split(" and b/", 1)[1].rsplit(" differ", 1)[0]
-                paths.append(_unquote(bin_path))
-                continue
-            if raw_line.startswith("+++ /dev/null"):
-                path = None  # deletion
-                continue
+    def __init__(self, rev: str) -> None:
+        self.rev = rev
+        self.path: str | None = None
+        self.line_no = 0
+        self.in_hunk = False
+        self.file_lines: dict[str, list[tuple[int, str]]] = {}
+        self.added: list[tuple[str, int, str]] = []
+        self.paths: list[str] = []
 
-        hunk_match = _HUNK_RE.match(raw_line)
-        if hunk_match:
-            new_line_no = int(hunk_match.group(1))
-            in_hunk = path is not None
-            continue
-        if not in_hunk or path is None:
-            continue
+    def _start_file(self, path: str) -> None:
+        self.path = path
+        self.file_lines.setdefault(path, [])
+        self.paths.append(path)
 
-        if raw_line.startswith("+"):
-            text = raw_line[1:]
-            file_lines[path].append((new_line_no, text))
-            added.append((path, new_line_no, text))
-            new_line_no += 1
-        elif raw_line.startswith(" "):
-            file_lines[path].append((new_line_no, raw_line[1:]))
-            new_line_no += 1
+    def _read_header(self, line: str) -> bool:
+        """Header lines appear before the first hunk of each file."""
+        plus = _PLUS_PATH_RE.match(line)
+        if plus:
+            quoted, bare = plus.groups()
+            self._start_file(_unquote(f'"{quoted}"') if quoted else bare.rstrip("\t"))
+            return True
+        if line.startswith("Binary files ") and " and b/" in line:
+            self.paths.append(_unquote(line.split(" and b/", 1)[1].rsplit(" differ", 1)[0]))
+            return True
+        if line.startswith("+++ /dev/null"):
+            self.path = None  # deletion
+            return True
+        return False
+
+    def _read_body(self, path: str, line: str) -> None:
+        if line.startswith("+"):
+            text = line[1:]
+            self.file_lines[path].append((self.line_no, text))
+            self.added.append((path, self.line_no, text))
+            self.line_no += 1
+        elif line.startswith(" "):
+            self.file_lines[path].append((self.line_no, line[1:]))
+            self.line_no += 1
         # "-" lines don't exist in the new file; "\ No newline" is ignored
 
-    units: list[Unit] = []
-    for p, line_no, text in added:
-        lines = file_lines[p]
+    def feed(self, line: str) -> None:
+        if line.startswith("diff --git "):
+            self.path, self.in_hunk = None, False
+            return
+        if not self.in_hunk and self._read_header(line):
+            return
+        hunk = _HUNK_RE.match(line)
+        if hunk:
+            self.line_no = int(hunk.group(1))
+            self.in_hunk = self.path is not None
+            return
+        if self.in_hunk and self.path is not None:
+            self._read_body(self.path, line)
+
+    def _window(self, path: str, line_no: int) -> str:
+        lines = self.file_lines[path]
         idx = next(i for i, (ln, _) in enumerate(lines) if ln == line_no)
         lo = max(0, idx - _WINDOW_RADIUS)
         hi = min(len(lines), idx + _WINDOW_RADIUS + 1)
-        window = "\n".join(t for _, t in lines[lo:hi])
-        units.append(Unit(path=p, file_class=classify_file(p), line_no=line_no,
-                          text=text, window=window, rev=rev))
-    return Changeset(units=units, paths=list(dict.fromkeys(paths)), rev=rev)
+        return "\n".join(text for _, text in lines[lo:hi])
+
+    def changeset(self) -> Changeset:
+        units = [Unit(path=path, file_class=classify_file(path), line_no=line_no, text=text,
+                      window=self._window(path, line_no), rev=self.rev)
+                 for path, line_no, text in self.added]
+        return Changeset(units=units, paths=list(dict.fromkeys(self.paths)), rev=self.rev)
 
 
+def parse_diff(diff: str, rev: str = "") -> Changeset:
+    reader = _DiffReader(rev)
+    for line in diff.splitlines():
+        reader.feed(line)
+    return reader.changeset()
+
+
+_QUOTEPATH_OFF = ("-c", "core.quotepath=false")  # print UTF-8 paths verbatim
 _DIFF_FLAGS = ("--unified=3", "--no-color", "--no-ext-diff", "--no-renames", "--diff-filter=ACMRT")
 
 
 def collect_staged() -> Changeset:
-    diff = gitutil.git("-c", "core.quotepath=false", "diff", "--cached", *_DIFF_FLAGS)
+    diff = gitutil.git(*_QUOTEPATH_OFF, "diff", "--cached", *_DIFF_FLAGS)
     return parse_diff(diff, rev="")
 
 
 def collect_commit(sha: str) -> Changeset:
     """Lines introduced by one commit (vs. its first parent; root commits vs. empty tree)."""
     gitutil.checked_rev(sha)
-    diff = gitutil.git("-c", "core.quotepath=false", "diff-tree", "-p", "-r", "--root",
+    diff = gitutil.git(*_QUOTEPATH_OFF, "diff-tree", "-p", "-r", "--root",
                        "--no-commit-id", "--first-parent", *_DIFF_FLAGS, sha)
     return parse_diff(diff, rev=sha)
 
@@ -137,7 +158,7 @@ def collect_commit(sha: str) -> Changeset:
 def collect_tree(rev: str = "HEAD") -> Changeset:
     """Every line of every tracked file at `rev`, as if newly added (onboarding / --all)."""
     gitutil.checked_rev(rev)
-    diff = gitutil.git("-c", "core.quotepath=false", "diff",
+    diff = gitutil.git(*_QUOTEPATH_OFF, "diff",
                        "4b825dc642cb6eb9a060e54bf8d69288fbee4904",  # the empty tree
                        rev, *_DIFF_FLAGS)
     return parse_diff(diff, rev=rev)

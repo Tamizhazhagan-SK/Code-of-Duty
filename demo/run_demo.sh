@@ -8,7 +8,7 @@
 # real ~/.gitconfig and repos are never touched. Delete the demo dir to clean up.
 set -uo pipefail
 
-AUTO=0; [ "${1:-}" = "--auto" ] && AUTO=1
+AUTO=0; [[ "${1:-}" == "--auto" ]] && AUTO=1
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEMO_DIR="${ZEROTRACE_DEMO_DIR:-${TMPDIR:-/tmp}/zerotrace-demo}"
 DEMO_DIR="${DEMO_DIR%/}"
@@ -19,19 +19,19 @@ c_cyan=$'\033[36m'; c_green=$'\033[32m'; c_yellow=$'\033[33m'; c_dim=$'\033[2m';
 scene() { printf '\n%s━━ %s ━━%s\n' "$c_cyan" "$1" "$c_off"; }
 say()   { printf '%s%s%s\n' "$c_dim" "$1" "$c_off"; }
 run()   { printf '%s$ %s%s\n' "$c_green" "$*" "$c_off"; "$@"; }
-pause() { [ "$AUTO" = 1 ] && return 0; printf '%s[enter] %s%s' "$c_yellow" "${1:-continue}" "$c_off"; read -r _ </dev/tty; }
+pause() { [[ "$AUTO" == 1 ]] && return 0; printf '%s[enter] %s%s' "$c_yellow" "${1:-continue}" "$c_off"; read -r _ </dev/tty; }
 zt()    { "$PY" -m zerotrace "$@"; }
 
 # Commit; if the hook couldn't reach a terminal, fall back to `zerotrace review` + retry.
 commit() {
   if git commit -m "$1"; then return 0; fi
-  if [ "$AUTO" = 1 ]; then say "(auto mode: commit stays blocked)"; return 1; fi
+  if [[ "$AUTO" == 1 ]]; then say "(auto mode: commit stays blocked)"; return 1; fi
   say "Fix interactively with: zerotrace review"
   pause "run zerotrace review"
   zt review && git commit -m "$1"
 }
 
-if [ ! -x "$PY" ]; then
+if [[ ! -x "$PY" ]]; then
   echo "Missing $PY. Set up once with:"
   echo "  python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'"
   exit 1

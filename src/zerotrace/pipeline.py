@@ -49,31 +49,39 @@ def _baseline_hash(value: str) -> str:
     return hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
+def _is_noise(f: Finding) -> bool:
+    """Deterministic false-positive filters that apply to every heuristic detector."""
+    value = f.matched_value
+    if not value or f.severity == "critical" or f.source == "sensitive_files":
+        return False
+    if is_placeholder(value) or is_uuid(value):
+        return True
+    if f.source not in ("detect_secrets", "code_assign"):
+        return False
+    if looks_like_prose(value):
+        return True  # "A password is required." is a message, not a password
+    if is_digest(value) and (is_hash_context(f.line_text) or is_hash_context(f.identifier)):
+        return True  # "hashed_secret": "<sha1>" stores a hash, not the secret
+    return f.rule_id in _ENTROPY_ONLY and (is_lockfile(f.path) or is_hash_context(f.line_text))
+
+
+def _is_baselined(f: Finding, baseline: dict[str, set[str]]) -> bool:
+    """Reviewed and accepted earlier, recorded as a hash in .secrets.baseline."""
+    return bool(f.matched_value) and _baseline_hash(f.matched_value) in baseline.get(f.path, ())
+
+
+def _context_adjusted(f: Finding) -> Finding:
+    """Test and docs paths lower heuristic findings one level; provider formats stay."""
+    heuristic = f.source in ("code_assign", "detect_secrets")
+    if f.file_class in ("test", "docs") and heuristic and f.severity != "critical":
+        return replace(f, severity=downgrade(f.severity))
+    return f
+
+
 def postprocess(findings: list[Finding], cfg) -> list[Finding]:
     baseline = _load_baseline(getattr(cfg, "repo_root", "") or os.getcwd())
-    kept: list[Finding] = []
-    for f in findings:
-        value = f.matched_value
-        if f.severity != "critical" and f.source != "sensitive_files" and value:
-            if is_placeholder(value) or is_uuid(value):
-                continue
-            if f.source in ("detect_secrets", "code_assign"):
-                if looks_like_prose(value):
-                    continue  # "A password is required." is a message, not a password
-                if is_digest(value) and (is_hash_context(f.line_text)
-                                         or is_hash_context(f.identifier)):
-                    continue  # "hashed_secret": "<sha1>" stores a hash, not the secret
-            if f.rule_id in _ENTROPY_ONLY and (is_lockfile(f.path) or is_hash_context(f.line_text)):
-                continue
-        # sha1 here is not a security control: it only has to match the hashes that
-        # detect-secrets already wrote into .secrets.baseline.
-        if value and _baseline_hash(value) in baseline.get(f.path, ()):
-            continue  # reviewed and accepted via .secrets.baseline
-        # Test/docs context lowers heuristic findings one level; provider formats stay.
-        if f.file_class in ("test", "docs") and f.source in ("code_assign", "detect_secrets") \
-                and f.severity != "critical":
-            f = replace(f, severity=downgrade(f.severity))
-        kept.append(f)
+    kept = [_context_adjusted(f) for f in findings
+            if not _is_noise(f) and not _is_baselined(f, baseline)]
     return dedupe(kept)
 
 

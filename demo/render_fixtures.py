@@ -46,10 +46,36 @@ def _gen(spec: str) -> str:
     raise SystemExit(f"unknown generator {spec}")
 
 
+MARKER = ".zerotrace-demo"
+
+
+def fixture_sets() -> list[str]:
+    return sorted(p for p in os.listdir(FIXTURES) if os.path.isdir(os.path.join(FIXTURES, p)))
+
+
+def checked_set(name: str) -> str:
+    """Only a directory that already exists under demo/fixtures, by exact name."""
+    if name not in fixture_sets():
+        raise SystemExit(f"unknown fixture set {name!r}; choose one of {fixture_sets()}")
+    return os.path.join(FIXTURES, name)
+
+
+def checked_dest(dest: str) -> str:
+    """Absolute destination for the throwaway repo. Never a home, root or repo directory."""
+    resolved = os.path.realpath(os.path.expanduser(dest))
+    forbidden = {os.path.realpath(p) for p in (os.sep, os.path.expanduser("~"), os.getcwd(),
+                                               os.path.dirname(FIXTURES))}
+    if resolved in forbidden or len(resolved.split(os.sep)) < 3:
+        raise SystemExit(f"refusing to use {resolved} as a demo directory")
+    if os.path.isdir(os.path.join(resolved, ".git")) and not os.path.exists(
+            os.path.join(resolved, MARKER)):
+        raise SystemExit(f"{resolved} looks like a real repository; refusing to touch it")
+    return resolved
+
+
 def render(name: str, dest: str) -> None:
-    src = os.path.join(FIXTURES, name)
-    if not os.path.isdir(src):
-        raise SystemExit(f"no fixture set {name!r} in {FIXTURES}")
+    src = checked_set(name)
+    dest = checked_dest(dest)
     for root, _dirs, files in os.walk(src):
         for fname in files:
             rel = os.path.relpath(os.path.join(root, fname), src)
@@ -60,12 +86,18 @@ def render(name: str, dest: str) -> None:
             text = re.sub(r"\{\{gen:([a-z_0-9:]+)\}\}", lambda m: _gen(m.group(1)), text)
             with open(target, "w", encoding="utf-8", newline="\n") as f:
                 f.write(text)
+    with open(os.path.join(dest, MARKER), "w", encoding="utf-8") as f:
+        f.write("Throwaway repo rendered by demo/render_fixtures.py. Safe to delete.\n")
 
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if a != "--fresh"]
     if len(args) != 2:
         raise SystemExit(__doc__)
-    if "--fresh" in sys.argv:
-        shutil.rmtree(args[1], ignore_errors=True)
-    render(args[0], args[1])
+    target = checked_dest(args[1])
+    if "--fresh" in sys.argv and os.path.isdir(target):
+        # Only ever delete a directory this script created.
+        if not os.path.exists(os.path.join(target, MARKER)):
+            raise SystemExit(f"{target} was not created by this script; refusing --fresh")
+        shutil.rmtree(target, ignore_errors=True)
+    render(args[0], target)

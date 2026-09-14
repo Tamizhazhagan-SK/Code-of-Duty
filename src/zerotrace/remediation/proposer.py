@@ -113,27 +113,33 @@ def _reference_line(finding, name: str, cfg) -> tuple[str, str]:
         else f"Provide {name} via the environment. Most config loaders expand ${{VAR}}.")
 
 
+def _unstage_proposal(finding) -> Proposal:
+    is_env = os.path.basename(finding.path).startswith(".env")
+    return Proposal("unstage", None, note=(
+        f"Unstage {finding.path}, add it to .gitignore"
+        + (", and create a keys-only .env.example." if is_env else ".")))
+
+
+def _pii_proposal(finding, mode: str) -> Proposal:
+    line, value = finding.line_text or "", finding.matched_value
+    if mode == "reference" and finding.file_class != "test":
+        name = "CUSTOMER_EMAIL" if "email" in finding.kind else _env_name(finding)
+        return Proposal("reference", line.replace(value, f"${{{name}}}"), name,
+                        "Load real contact data at runtime; never ship it in code.")
+    synthetic = _PII_SYNTHETIC[finding.kind]
+    return Proposal("placeholder", line.replace(value, synthetic) if value else line,
+                    note="Synthetic, RFC-reserved test data.")
+
+
 def propose(decision, mode: str = "reference", cfg=None) -> Proposal:
     finding = decision.finding
     if finding.line_no == 0 or finding.kind == "sensitive_file":
-        return Proposal("unstage", None, note=(
-            f"Unstage {finding.path}, add it to .gitignore"
-            + (", and create a keys-only .env.example." if os.path.basename(finding.path)
-               .startswith(".env") else ".")))
-
-    line = finding.line_text or ""
-    value = finding.matched_value
-
+        return _unstage_proposal(finding)
     if finding.kind in _PII_SYNTHETIC:
-        synthetic = _PII_SYNTHETIC[finding.kind]
-        if mode == "reference" and finding.file_class != "test":
-            name = "CUSTOMER_EMAIL" if "email" in finding.kind else _env_name(finding)
-            return Proposal("reference", line.replace(value, f"${{{name}}}"), name,
-                            "Load real contact data at runtime; never ship it in code.")
-        return Proposal("placeholder", line.replace(value, synthetic) if value else line,
-                        note="Synthetic, RFC-reserved test data.")
+        return _pii_proposal(finding, mode)
 
     name = _env_name(finding)
+    line, value = finding.line_text or "", finding.matched_value
     if mode == "placeholder":
         return Proposal("placeholder", line.replace(value, f"<{name}>") if value else line, name,
                         "The placeholder is obviously fake, so the scanner won't re-flag it.")

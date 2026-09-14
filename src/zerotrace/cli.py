@@ -98,52 +98,62 @@ def _commits_in_range(rev_range: str) -> list[str]:
     return out[-_MAX_PUSH_COMMITS:]
 
 
-def scan(args) -> int:
-    from .ui.terminal import headless_report, banner
-    cfg = load_config()
-    results: list[tuple[str, list]] = []
+def _scan_targets(args, cfg) -> list[tuple[str, list]]:
+    """(commit sha, decisions) pairs for whichever target the user asked for."""
+    use_model = not args.no_model
     if args.range:
-        for sha in _commits_in_range(args.range):
-            results.append((sha, pipeline.scan(staged_diff.collect_commit(sha), cfg,
-                                               use_model=not args.no_model)))
-    elif args.all:
-        results.append(("", pipeline.scan(staged_diff.collect_tree(gitutil.checked_rev(args.rev)), cfg,
-                                           use_model=not args.no_model)))
-    else:
-        results.append(("", pipeline.scan(staged_diff.collect_staged(), cfg,
-                                          use_model=not args.no_model)))
+        return [(sha, pipeline.scan(staged_diff.collect_commit(sha), cfg, use_model=use_model))
+                for sha in _commits_in_range(args.range)]
+    if args.all:
+        tree = staged_diff.collect_tree(gitutil.checked_rev(args.rev))
+        return [("", pipeline.scan(tree, cfg, use_model=use_model))]
+    return [("", pipeline.scan(staged_diff.collect_staged(), cfg, use_model=use_model))]
 
-    fail_on = ("block", "warn") if args.fail_on == "warn" else ("block",)
-    failed = any(d.action in fail_on for _, ds in results for d in ds)
-    if args.format == "json":
-        print(json.dumps([row for sha, ds in results for row in _decisions_to_json(ds, sha)],
-                         indent=2))
-    else:
-        shown = False
-        for sha, ds in results:
-            relevant = [d for d in ds if d.action != "allow"]
-            if relevant:
-                if not shown:
-                    banner()
-                    shown = True
-                if sha:
-                    print(f"\ncommit {sha[:12]}")
-                headless_report(relevant, cfg)
+
+def _render_scan(results: list[tuple[str, list]], cfg) -> None:
+    from .ui.terminal import banner, headless_report
+    shown = False
+    for sha, decisions in results:
+        relevant = [d for d in decisions if d.action != "allow"]
+        if not relevant:
+            continue
         if not shown:
-            print("zerotrace: no findings.")
+            banner()
+            shown = True
+        if sha:
+            print(f"\ncommit {sha[:12]}")
+        headless_report(relevant, cfg)
+    if not shown:
+        print("zerotrace: no findings.")
+
+
+def scan(args) -> int:
+    cfg = load_config()
+    results = _scan_targets(args, cfg)
+    fail_on = ("block", "warn") if args.fail_on == "warn" else ("block",)
+    failed = any(d.action in fail_on for _, decisions in results for d in decisions)
+    if args.format == "json":
+        print(json.dumps([row for sha, decisions in results
+                          for row in _decisions_to_json(decisions, sha)], indent=2))
+    else:
+        _render_scan(results, cfg)
     return 1 if failed else 0
 
 
-def pre_push(args) -> int:
-    """Backstop for `git commit --no-verify`: scan every commit about to leave the machine.
-    Deterministic only (no model) and blocks only on BLOCK-level findings."""
-    from .ui.terminal import headless_report, banner
-    cfg = load_config()
-    if not cfg.enabled:
-        return 0
-    remote = gitutil.checked_rev(args.remote or "origin")
+def _commits_for_ref(local_sha: str, remote_sha: str, remote: str) -> list[str]:
+    """Commits this ref would publish: everything not already on the remote."""
+    if set(remote_sha) != {"0"} and gitutil.ok("cat-file", "-e", remote_sha):
+        try:
+            return _commits_in_range(f"{remote_sha}..{local_sha}")
+        except gitutil.GitError:
+            pass
+    return gitutil.git("rev-list", "--reverse", "--no-merges",
+                       local_sha, "--not", f"--remotes={remote}").split()
+
+
+def _commits_being_pushed(stdin_text: str, remote: str) -> list[str]:
     commits: list[str] = []
-    for line in sys.stdin.read().splitlines():
+    for line in stdin_text.splitlines():
         parts = line.split()
         if len(parts) != 4:
             continue
@@ -152,26 +162,12 @@ def pre_push(args) -> int:
             continue  # git only ever writes object ids here
         if set(local_sha) == {"0"}:
             continue  # branch deletion
-        rev_args = [local_sha, "--not", f"--remotes={remote}"]
-        if set(remote_sha) != {"0"} and gitutil.ok("cat-file", "-e", remote_sha):
-            try:
-                commits += _commits_in_range(f"{remote_sha}..{local_sha}")
-                continue
-            except gitutil.GitError:
-                pass
-        commits += gitutil.git("rev-list", "--reverse", "--no-merges", *rev_args).split()
-    commits = list(dict.fromkeys(commits))[-_MAX_PUSH_COMMITS:]
+        commits += _commits_for_ref(local_sha, remote_sha, remote)
+    return list(dict.fromkeys(commits))[-_MAX_PUSH_COMMITS:]
 
-    blocked: list[tuple[str, list]] = []
-    for sha in commits:
-        decisions = pipeline.scan(staged_diff.collect_commit(sha), cfg, use_model=False)
-        hits = [d for d in decisions if d.action == "block"]
-        for d in hits:
-            _record_decision(d, {"stage": "pre-push", "commit": sha})
-        if hits:
-            blocked.append((sha, hits))
-    if not blocked:
-        return 0
+
+def _report_blocked_push(blocked: list[tuple[str, list]], cfg) -> None:
+    from .ui.terminal import banner, headless_report
     banner()
     for sha, hits in blocked:
         subject = gitutil.git("log", "-1", "--format=%s", sha).strip()
@@ -181,6 +177,26 @@ def pre_push(args) -> int:
           "`--no-verify`).\n  1. Rotate the exposed credentials.\n  2. Rewrite the commits "
           "(`git reset --soft <base>` or `git rebase -i <base>`), then fix and re-commit.",
           file=sys.stderr)
+
+
+def pre_push(args) -> int:
+    """Backstop for `git commit --no-verify`: scan every commit about to leave the machine.
+    Deterministic only (no model) and blocks only on BLOCK-level findings."""
+    cfg = load_config()
+    if not cfg.enabled:
+        return 0
+    remote = gitutil.checked_rev(args.remote or "origin")
+    blocked: list[tuple[str, list]] = []
+    for sha in _commits_being_pushed(sys.stdin.read(), remote):
+        decisions = pipeline.scan(staged_diff.collect_commit(sha), cfg, use_model=False)
+        hits = [d for d in decisions if d.action == "block"]
+        for decision in hits:
+            _record_decision(decision, {"stage": "pre-push", "commit": sha})
+        if hits:
+            blocked.append((sha, hits))
+    if not blocked:
+        return 0
+    _report_blocked_push(blocked, cfg)
     return 1
 
 
