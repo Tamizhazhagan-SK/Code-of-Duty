@@ -1,17 +1,6 @@
-# Config for developing THIS repo (dogfooding + hygiene).
+# Hygiene hooks for developing THIS repo. ZeroTrace itself runs via `zerotrace install --global`
+# (the global hook also runs this file for you, since core.hooksPath blocks `pre-commit install`).
 repos:
-  - repo: local
-    hooks:
-      - id: zerotrace
-        name: zerotrace (self)
-        entry: uv run zerotrace run
-        language: system
-        pass_filenames: true
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.5.0
-    hooks:
-      - id: detect-secrets
-        args: ["--baseline", ".secrets.baseline"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks: [{id: end-of-file-fixer}, {id: trailing-whitespace}, {id: check-yaml}]

@@ -1,2 +1,2 @@
-__all__ = ["__version__"]
-__version__ = "0.1.0"
+"""ZeroTrace: local-first pre-commit secret & PII guardrail."""
+__version__ = "0.2.0"

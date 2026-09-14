@@ -1,5 +1,6 @@
 """Stable, non-reversible fingerprints. Salted HMAC for PII."""
-import hmac, hashlib
+import hmac
+import hashlib
 
 def finding_id(rule_id: str, path: str, line_text_hash: str) -> str:
     """Scope an exception to a specific line; invalidated if the line changes."""

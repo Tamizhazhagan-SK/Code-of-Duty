@@ -1,13 +1,14 @@
-# This file makes THIS repo consumable as a hook by OTHER repos:
+# Lets repos that already standardise on the pre-commit framework consume ZeroTrace:
 #   repos:
 #     - repo: https://github.com/<org>/zerotrace
-#       rev: v0.1.0
+#       rev: v0.2.0
 #       hooks: [{ id: zerotrace }]
+# Most teams don't need this: `zerotrace install --global` covers every repo on the machine.
 - id: zerotrace
-  name: ZeroTrace secret & PII sanitizer
+  name: ZeroTrace secret & PII guardrail
   entry: zerotrace run
   language: python
-  # Only staged files are passed by pre-commit; we still re-derive the diff.
-  pass_filenames: true
+  pass_filenames: false   # ZeroTrace reads the staged diff itself (added lines only)
+  always_run: true
   stages: [pre-commit]
-  require_serial: true   # interactive prompts need a single process
+  require_serial: true
