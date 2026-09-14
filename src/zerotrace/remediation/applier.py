@@ -48,7 +48,7 @@ def apply(path: str, line_no: int, new_text: str, expected_old: str | None = Non
         raise StaleIndexError(f"{path}:{line_no} changed since the scan; re-run zerotrace review")
     _write_index_blob(path, "".join(lines))
 
-    full = os.path.join(gitutil.repo_root(), path)
+    full = gitutil.resolved_in_repo(path)
     try:
         with open(full, encoding="utf-8", newline="") as f:
             wt_lines = _split(f.read())
@@ -65,7 +65,8 @@ def unstage_and_ignore(path: str) -> list[str]:
     """Remove `path` from the commit, gitignore it, and (for .env) add a keys-only example.
     Returns the list of actions taken, for the audit log and the terminal."""
     actions: list[str] = []
-    root = gitutil.repo_root()
+    root = os.path.realpath(gitutil.repo_root())
+    gitutil.resolved_in_repo(path)
     staged = gitutil.blob_text("", path)
     gitutil.git("rm", "--cached", "--quiet", "--", path)
     actions.append(f"unstaged {path} (the file stays on disk)")
@@ -87,7 +88,7 @@ def unstage_and_ignore(path: str) -> list[str]:
     base = os.path.basename(path)
     if base.startswith(".env") and staged is not None:
         example_rel = os.path.join(os.path.dirname(path), ".env.example")
-        example = os.path.join(root, example_rel)
+        example = gitutil.resolved_in_repo(example_rel)
         if not os.path.exists(example):
             keys = [m.group(1) for m in map(_ENV_SAFE.match, staged.splitlines()) if m]
             with open(example, "w", encoding="utf-8") as f:

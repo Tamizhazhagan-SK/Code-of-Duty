@@ -32,3 +32,9 @@ build/
 
 # NOTE: .secrets.baseline IS committed on purpose — it stores hashed
 # fingerprints, not plaintext, and is how known findings are suppressed.
+
+# SonarQube for IDE binding (contains the connection id, not a token)
+.sonarlint/
+coverage.xml
+.coverage
+htmlcov/
