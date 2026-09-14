@@ -1,0 +1,84 @@
+"""Input that reaches a git command line, file permissions, and regex-anchor correctness."""
+import os
+import subprocess
+import sys
+
+import pytest
+
+from zerotrace import gitutil, installer
+from zerotrace.detectors import sensitive_files
+
+from .conftest import Fake, rand, write
+
+
+@pytest.mark.parametrize("rev", ["HEAD", "origin/main", "a1b2c3..d4e5f6", "HEAD~3", "v1.0.0",
+                                 "refs/heads/main", "@{u}"])
+def test_valid_revisions_pass(rev):
+    assert gitutil.checked_rev(rev) == rev
+
+
+@pytest.mark.parametrize("rev", ["--upload-pack=touch /tmp/x", "-n", "a;rm -rf /", "a b",
+                                 "$(id)", "`id`", "a|b", "", "a" * 300, "a\nb"])
+def test_hostile_revisions_are_refused(rev):
+    with pytest.raises(gitutil.GitError):
+        gitutil.checked_rev(rev)
+
+
+@pytest.mark.parametrize("path", ["../../etc/passwd", "/etc/passwd", "-rf", "a/../../b", ""])
+def test_hostile_paths_are_refused(path):
+    with pytest.raises(gitutil.GitError):
+        gitutil.checked_path(path)
+
+
+def test_scan_rejects_a_hostile_range_instead_of_running_git(repo):
+    write("a.py", "x = 1\n")
+    subprocess.run(["git", "add", "-A"], check=True)
+    subprocess.run(["git", "commit", "-qm", "c", "--no-verify"], check=True)
+    result = subprocess.run(
+        [sys.executable, "-m", "zerotrace", "scan", "--range=--output=/tmp/pwned"],
+        capture_output=True, text=True, stdin=subprocess.DEVNULL,
+    )
+    assert result.returncode == 1
+    assert "unexpected revision" in result.stderr
+    assert not os.path.exists("/tmp/pwned")
+
+
+def test_pre_push_ignores_lines_that_are_not_object_ids(repo):
+    result = subprocess.run(
+        [sys.executable, "-m", "zerotrace", "pre-push", "origin"],
+        input="refs/heads/main --upload-pack=id refs/heads/main 0000000000000000000000000000000000000000\n",
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+
+
+def test_hooks_are_not_group_or_world_writable(git_env):
+    installer.install("global")
+    hooks = installer.default_hooks_dir("global")
+    for name in ("pre-commit", "pre-push", "commit-msg"):
+        mode = os.stat(os.path.join(hooks, name)).st_mode & 0o777
+        assert mode == 0o700, (name, oct(mode))
+
+
+def test_path_like_values_are_still_skipped_and_secrets_still_caught():
+    from .test_detectors import _scan
+    assert _scan("app.py", 'key_file = "/etc/ssl/private/server.key"') == []
+    assert _scan("app.py", 'cert = "certs/server.pem"') == []
+    findings = _scan("app.py", f'api_key = "{rand(20)}9aZ"')
+    assert findings and findings[0].severity == "high"
+
+
+def test_private_key_file_detection_still_anchors_correctly():
+    assert sensitive_files.match("keys/app.key", "-----BEGIN " + "PRIVATE KEY-----\nabc") is not None
+    assert sensitive_files.match("keys/app.key", "A" * 250) is not None      # bare base64 body
+    assert sensitive_files.match("keys/app.key", "not a key") is None
+    assert sensitive_files.match("src/hotkey.py", "PRIVATE KEY") is None     # not a .key file
+
+
+def test_eval_values_use_the_csprng():
+    import inspect
+
+    from zerotrace import evals
+    source = inspect.getsource(evals)
+    assert "random.shuffle" not in source or "SystemRandom" in source
+    assert Fake.github().startswith("ghp_")

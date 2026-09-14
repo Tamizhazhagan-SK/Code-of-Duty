@@ -1,11 +1,32 @@
 """Thin, dependency-free git helpers. Every path ZeroTrace touches is repo-root relative."""
 import functools
 import os
+import re
 import subprocess
+
+# Revisions reach a git command line, and they come from argv (`scan --range`) or from the
+# pre-push hook's stdin. Allow only the characters git revision syntax actually needs, and
+# never a leading "-" (which git would read as an option).
+_REV_RE = re.compile(r"\A(?!-)[A-Za-z0-9._/^~@{}\-]{1,255}\Z")
 
 
 class GitError(RuntimeError):
     pass
+
+
+def checked_rev(rev: str) -> str:
+    """Return `rev` if it is a plausible revision/range, else raise."""
+    if not _REV_RE.match(rev or ""):
+        raise GitError(f"refusing to run git with an unexpected revision: {rev!r}")
+    return rev
+
+
+def checked_path(path: str) -> str:
+    """Repo-relative path from a diff. No option-like or parent-escaping paths."""
+    if not path or path.startswith("-") or os.path.isabs(path) \
+            or ".." in path.replace("\\", "/").split("/"):
+        raise GitError(f"refusing to run git with an unexpected path: {path!r}")
+    return path
 
 
 def git(*args: str, input_bytes: bytes | None = None, check: bool = True) -> str:
@@ -46,6 +67,9 @@ def in_repo() -> bool:
 
 def blob_text(rev: str, path: str) -> str | None:
     """File content at `rev` ("" = the index). Raw bytes, no textconv/filters."""
+    checked_path(path)
+    if rev:
+        checked_rev(rev)
     data = git_bytes("cat-file", "blob", f"{rev}:{path}", check=False)
     if data is None:
         return None

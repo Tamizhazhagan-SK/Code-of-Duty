@@ -71,7 +71,10 @@ _EXCLUDE_FIRST = {"is", "has", "show", "hide", "toggle", "validate", "check", "g
 _BOOLISH = {"true", "false", "yes", "no", "on", "off", "null", "none", "nil", "undefined"}
 _I18N_KEY = re.compile(r"^[a-z][a-zA-Z_]*(\.[a-zA-Z_]+)+$")
 _TEMPLATED = re.compile(r"(\$\{|\{\{|#\{|%\(|\{[A-Za-z_][\w.]*\}|\$[A-Z_]{2,})")
-_PATHISH = re.compile(r"^(/|\./|\.\./|~/|[A-Za-z]:\\)|\.(pem|key|crt|json|ya?ml|p12|pfx|txt)$")
+_PATHISH = re.compile(
+    r"(?:^(?:/|\./|\.\./|~/|[A-Za-z]:\\))"                 # absolute/relative path prefix
+    r"|(?:\.(?:pem|key|crt|json|ya?ml|p12|pfx|txt)$)",     # or a filename suffix
+)
 
 _CATEGORY_EXPLAIN = {
     "password": "A password is hardcoded. It is readable by everyone with repo access "

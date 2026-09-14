@@ -4,7 +4,6 @@ Values are generated at run time, so the repo holds no realistic-looking secrets
 Labels: real (must not be allowed), placeholder / fixture (ideally allowed).
 """
 import json
-import random
 import secrets
 import statistics
 import string
@@ -40,7 +39,7 @@ def _gen(spec: str) -> str:
                 secrets.choice(string.digits), secrets.choice("!@#%^*-_")]
         core += [secrets.choice(string.ascii_letters + string.digits + "!@#%^*-_")
                  for _ in range(n - 4)]
-        random.shuffle(core)
+        secrets.SystemRandom().shuffle(core)
         return "".join(core)
     if kind == "words":
         return "-".join(secrets.choice(_WORDS) for _ in range(n))

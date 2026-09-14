@@ -45,6 +45,10 @@ def _load_baseline(root: str) -> dict[str, set[str]]:
     return out
 
 
+def _baseline_hash(value: str) -> str:
+    return hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+
 def postprocess(findings: list[Finding], cfg) -> list[Finding]:
     baseline = _load_baseline(getattr(cfg, "repo_root", "") or os.getcwd())
     kept: list[Finding] = []
@@ -57,7 +61,9 @@ def postprocess(findings: list[Finding], cfg) -> list[Finding]:
                 continue  # "A password is required." is a message, not a password
             if f.rule_id in _ENTROPY_ONLY and (is_lockfile(f.path) or is_hash_context(f.line_text)):
                 continue
-        if value and hashlib.sha1(value.encode("utf-8")).hexdigest() in baseline.get(f.path, ()):
+        # sha1 here is not a security control: it only has to match the hashes that
+        # detect-secrets already wrote into .secrets.baseline.
+        if value and _baseline_hash(value) in baseline.get(f.path, ()):
             continue  # reviewed and accepted via .secrets.baseline
         # Test/docs context lowers heuristic findings one level; provider formats stay.
         if f.file_class in ("test", "docs") and f.source in ("code_assign", "detect_secrets") \

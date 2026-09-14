@@ -3,6 +3,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import sys
 import time
 
@@ -15,6 +16,7 @@ from .config import load_config
 COMMANDS = ("run", "review", "scan", "pre-push", "init", "install", "uninstall", "doctor",
             "eval", "version")
 _MAX_PUSH_COMMITS = 300
+_SHA_RE = re.compile(r"\A[0-9a-f]{40,64}\Z")
 
 
 def _record_decision(decision, extra: dict | None = None) -> None:
@@ -91,7 +93,8 @@ def _decisions_to_json(decisions, commit: str = "") -> list[dict]:
 
 
 def _commits_in_range(rev_range: str) -> list[str]:
-    out = gitutil.git("rev-list", "--reverse", "--no-merges", rev_range).split()
+    out = gitutil.git("rev-list", "--reverse", "--no-merges",
+                      gitutil.checked_rev(rev_range)).split()
     return out[-_MAX_PUSH_COMMITS:]
 
 
@@ -104,7 +107,7 @@ def scan(args) -> int:
             results.append((sha, pipeline.scan(staged_diff.collect_commit(sha), cfg,
                                                use_model=not args.no_model)))
     elif args.all:
-        results.append(("", pipeline.scan(staged_diff.collect_tree(args.rev), cfg,
+        results.append(("", pipeline.scan(staged_diff.collect_tree(gitutil.checked_rev(args.rev)), cfg,
                                            use_model=not args.no_model)))
     else:
         results.append(("", pipeline.scan(staged_diff.collect_staged(), cfg,
@@ -138,13 +141,15 @@ def pre_push(args) -> int:
     cfg = load_config()
     if not cfg.enabled:
         return 0
-    remote = args.remote or "origin"
+    remote = gitutil.checked_rev(args.remote or "origin")
     commits: list[str] = []
     for line in sys.stdin.read().splitlines():
         parts = line.split()
         if len(parts) != 4:
             continue
         _local_ref, local_sha, _remote_ref, remote_sha = parts
+        if not _SHA_RE.match(local_sha) or not _SHA_RE.match(remote_sha):
+            continue  # git only ever writes object ids here
         if set(local_sha) == {"0"}:
             continue  # branch deletion
         rev_args = [local_sha, "--not", f"--remotes={remote}"]
