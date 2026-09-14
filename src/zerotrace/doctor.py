@@ -1,16 +1,42 @@
-"""`zerotrace doctor`: is this machine/repo actually protected, and is the model trustworthy?"""
+"""`zerotrace doctor`: is this machine/repo actually protected, and is the model trustworthy?
+
+Each check is a small function that appends rows to a Report, so adding a check never grows one
+big function.
+"""
 import os
 import re
 import sys
 import time
+from dataclasses import dataclass, field
 
 from rich.console import Console
 from rich.table import Table
 
 from . import __version__, gitutil, installer
-from .config import load_config
+from .config import Config, load_config
 
 OK, WARN, FAIL = "[green]✓[/]", "[yellow]![/]", "[red]✗[/]"
+_MODEL_INTEGRITY = "model integrity"
+_MODEL_AVAILABLE = "model available"
+
+
+@dataclass
+class Report:
+    rows: list[tuple[str, str, str]] = field(default_factory=list)
+    failures: int = 0
+
+    def add(self, status: str, check: str, result: str) -> None:
+        self.rows.append((status, check, result))
+        self.failures += status == FAIL
+
+    def table(self) -> Table:
+        table = Table(title=f"ZeroTrace doctor · v{__version__}", show_header=False, expand=False)
+        table.add_column("", width=2)
+        table.add_column("Check", style="bold")
+        table.add_column("Result", overflow="fold")
+        for row in self.rows:
+            table.add_row(*row)
+        return table
 
 
 def _pin_digest(root: str, digest: str) -> str:
@@ -30,98 +56,123 @@ def _pin_digest(root: str, digest: str) -> str:
     return f"pinned {digest[:19]}… in .zerotrace.yml"
 
 
-def doctor(pin_model: bool = False, warm: bool = False) -> int:
-    console = Console()
-    table = Table(title=f"ZeroTrace doctor · v{__version__}", show_header=False, expand=False)
-    table.add_column("", width=2)
-    table.add_column("Check", style="bold")
-    table.add_column("Result", overflow="fold")
-    failures = 0
+def _check_toolchain(report: Report) -> None:
+    report.add(OK, "python", sys.executable)
+    version = gitutil.git("--version", check=False).strip()
+    report.add(OK if version else FAIL, "git", version or "git not found")
 
-    def row(status: str, check: str, result: str) -> None:
-        nonlocal failures
-        failures += status == FAIL
-        table.add_row(status, check, result)
 
-    row(OK, "python", sys.executable)
-    git_version = gitutil.git("--version", check=False).strip()
-    row(OK if git_version else FAIL, "git", git_version or "git not found")
-
+def _check_install(report: Report) -> None:
     for scope in ("system", "global"):
-        value = gitutil.config_get("core.hooksPath", scope)
-        if value:
-            managed = installer.is_managed(value)
-            row(OK if managed else WARN, f"{scope} hooksPath",
-                f"{value} ({'ZeroTrace-managed' if managed else 'not ZeroTrace'})")
-        else:
-            row(WARN if scope == "global" else OK, f"{scope} hooksPath", "not set")
+        value = gitutil.config_get(installer.HOOKS_PATH_KEY, scope)
+        if not value:
+            report.add(WARN if scope == "global" else OK, f"{scope} hooksPath", "not set")
+            continue
+        managed = installer.is_managed(value)
+        report.add(OK if managed else WARN, f"{scope} hooksPath",
+                   f"{value} ({'ZeroTrace-managed' if managed else 'not ZeroTrace'})")
 
-    in_repo = gitutil.in_repo()
-    if in_repo:
-        os.chdir(gitutil.repo_root())
-        local = gitutil.config_get("core.hooksPath", "local")
-        effective = installer.effective_hooks_dir()
-        pre_commit = os.path.join(effective, "pre-commit")
-        runs_zt = installer.is_managed(effective)
-        if not runs_zt and os.path.exists(pre_commit):
-            with open(pre_commit, encoding="utf-8", errors="replace") as f:
-                runs_zt = "zerotrace" in f.read()
-        if local and not installer.is_managed(local):
-            row(OK if runs_zt else FAIL, "repo override",
-                f"local core.hooksPath={local} overrides global"
-                + ("" if runs_zt else ". Not protected: run `zerotrace install --repo`"))
-        row(OK if runs_zt else FAIL, "this repo protected",
-            f"yes (hooks: {effective})" if runs_zt else
-            "no. Run `zerotrace install --global` (or `--repo`)")
-    else:
-        row(OK, "repo", "not inside a git repo (repo checks skipped)")
 
-    cfg = load_config()
-    row(OK, "config layers", ", ".join(cfg.sources) or "built-in defaults")
+def _repo_runs_zerotrace(hooks_dir: str) -> bool:
+    if installer.is_managed(hooks_dir):
+        return True
+    pre_commit = os.path.join(hooks_dir, "pre-commit")
+    if not os.path.exists(pre_commit):
+        return False
+    with open(pre_commit, encoding="utf-8", errors="replace") as f:
+        return "zerotrace" in f.read()
+
+
+def _check_repo(report: Report) -> None:
+    if not gitutil.in_repo():
+        report.add(OK, "repo", "not inside a git repo (repo checks skipped)")
+        return
+    os.chdir(gitutil.repo_root())
+    hooks_dir = installer.effective_hooks_dir()
+    runs = _repo_runs_zerotrace(hooks_dir)
+    local = gitutil.config_get(installer.HOOKS_PATH_KEY, "local")
+    if local and not installer.is_managed(local):
+        report.add(OK if runs else FAIL, "repo override",
+                   f"local {installer.HOOKS_PATH_KEY}={local} overrides global"
+                   + ("" if runs else ". Not protected: run `zerotrace install --repo`"))
+    report.add(OK if runs else FAIL, "this repo protected",
+               f"yes (hooks: {hooks_dir})" if runs else
+               "no. Run `zerotrace install --global` (or `--repo`)")
+
+
+def _check_policy(report: Report, cfg: Config) -> None:
+    report.add(OK, "config layers", ", ".join(cfg.sources) or "built-in defaults")
     if cfg.locked:
-        row(OK, "org-locked keys", ", ".join(cfg.locked))
+        report.add(OK, "org-locked keys", ", ".join(cfg.locked))
     from .detectors import rulepack
     rules = rulepack.load_rules(cfg.rules_extra, cfg.repo_root)
-    row(OK, "rule pack", f"{len(rules)} provider rules + code-assignment, sensitive-file, "
-                         "detect-secrets and PII detectors")
+    report.add(OK, "rule pack", f"{len(rules)} provider rules + code-assignment, sensitive-file, "
+                                "detect-secrets and PII detectors")
 
-    if not cfg.model_enabled:
-        row(OK, "AI tie-break", "disabled; MEDIUM findings will WARN (fail closed)")
+
+def _check_endpoint(report: Report, cfg: Config) -> None:
+    from .classifier import llm
+    where = "REMOTE" if cfg.model_is_remote else "local"
+    try:
+        llm.check_endpoint(cfg)
+        report.add(OK, "model endpoint", f"{cfg.model_runtime} @ {cfg.model_endpoint} ({where})")
+    except llm.EndpointRefused as exc:
+        report.add(FAIL, "model endpoint", str(exc))
+
+
+def _check_integrity(report: Report, cfg: Config, digest: str, pin_model: bool) -> None:
+    if cfg.model_digest:
+        match = digest.startswith(cfg.model_digest.removeprefix("sha256:"))
+        report.add(OK if match else FAIL, _MODEL_INTEGRITY,
+                   "served model matches the pinned digest" if match else
+                   f"MISMATCH: pinned {cfg.model_digest[:19]}…, served {digest[:19]}…")
+    elif pin_model and gitutil.in_repo():
+        report.add(OK, _MODEL_INTEGRITY, _pin_digest(cfg.repo_root, digest))
     else:
-        from .classifier import llm
-        where = "REMOTE" if cfg.model_is_remote else "local"
-        try:
-            llm.check_endpoint(cfg)
-            row(OK, "model endpoint", f"{cfg.model_runtime} @ {cfg.model_endpoint} ({where})")
-        except llm.EndpointRefused as exc:
-            row(FAIL, "model endpoint", str(exc))
-        start = time.monotonic()
-        digest = llm.model_digest(cfg)
-        latency = (time.monotonic() - start) * 1000
-        if digest is None:
-            row(WARN, "model available",
-                f"{cfg.model_name} not reachable/served ({latency:.0f} ms). MEDIUM findings will WARN. "
-                "Start it: `docker compose -f docker/docker-compose.yml up -d`")
-        else:
-            row(OK, "model available", f"{cfg.model_name} · {digest[:19]}… ({latency:.0f} ms)")
-            if warm:
-                took = llm.warm(cfg)
-                row(OK if took is not None else WARN, "model warm-up",
-                    f"loaded and pinned in memory for {cfg.model_keep_alive} ({took:.1f} s)"
-                    if took is not None else "warm-up failed; the first MEDIUM finding will be slow")
-            if cfg.model_digest:
-                match = digest.startswith(cfg.model_digest.removeprefix("sha256:"))
-                row(OK if match else FAIL, "model integrity",
-                    "served model matches the pinned digest" if match else
-                    f"MISMATCH: pinned {cfg.model_digest[:19]}…, served {digest[:19]}…")
-            elif pin_model and in_repo:
-                row(OK, "model integrity", _pin_digest(cfg.repo_root, digest))
-            else:
-                row(WARN, "model integrity", "digest not pinned (`zerotrace doctor --pin-model`)")
-        if cfg.model_is_remote:
-            row(OK, "egress", "only redacted shape features are sent (no raw values), over TLS")
-        else:
-            row(OK, "egress", "localhost only; proxy env vars bypassed for model calls")
+        report.add(WARN, _MODEL_INTEGRITY, "digest not pinned (`zerotrace doctor --pin-model`)")
 
-    console.print(table)
-    return 1 if failures else 0
+
+def _check_warm(report: Report, cfg: Config) -> None:
+    from .classifier import llm
+    took = llm.warm(cfg)
+    report.add(OK if took is not None else WARN, "model warm-up",
+               f"loaded and pinned in memory for {cfg.model_keep_alive} ({took:.1f} s)"
+               if took is not None else "warm-up failed; the first MEDIUM finding will be slow")
+
+
+def _check_model(report: Report, cfg: Config, pin_model: bool, warm: bool) -> None:
+    if not cfg.model_enabled:
+        report.add(OK, "AI tie-break", "disabled; MEDIUM findings will WARN (fail closed)")
+        return
+    from .classifier import llm
+    _check_endpoint(report, cfg)
+
+    start = time.monotonic()
+    digest = llm.model_digest(cfg)
+    latency = (time.monotonic() - start) * 1000
+    if digest is None:
+        report.add(WARN, _MODEL_AVAILABLE,
+                   f"{cfg.model_name} not reachable/served ({latency:.0f} ms). MEDIUM findings "
+                   "will WARN. Start it: `docker compose -f docker/docker-compose.yml up -d`")
+    else:
+        report.add(OK, _MODEL_AVAILABLE, f"{cfg.model_name} · {digest[:19]}… ({latency:.0f} ms)")
+        if warm:
+            _check_warm(report, cfg)
+        _check_integrity(report, cfg, digest, pin_model)
+
+    report.add(OK, "egress",
+               "only redacted shape features are sent (no raw values), over TLS"
+               if cfg.model_is_remote else
+               "localhost only; proxy env vars bypassed for model calls")
+
+
+def doctor(pin_model: bool = False, warm: bool = False) -> int:
+    report = Report()
+    _check_toolchain(report)
+    _check_install(report)
+    _check_repo(report)
+    cfg = load_config()
+    _check_policy(report, cfg)
+    _check_model(report, cfg, pin_model, warm)
+    Console().print(report.table())
+    return 1 if report.failures else 0

@@ -145,58 +145,70 @@ def _layers(repo_path: str | None) -> tuple[dict, list[str], list[str]]:
     return merged, sources, locked
 
 
+def _block_severity(policy: dict) -> tuple[str, ...]:
+    block = tuple(policy.get("block_severity", ["critical", "high"]))
+    # A critical finding can never be configured to pass.
+    return block if "critical" in block else ("critical", *block)
+
+
+def _endpoint(model: dict, locked: list[str]) -> str:
+    if "model.endpoint" in locked and model.get("endpoint"):
+        return str(model["endpoint"])  # org-pinned endpoint: env can't redirect it
+    return str(os.environ.get("ZEROTRACE_MODEL_ENDPOINT") or model.get("endpoint")
+               or Config().model_endpoint)
+
+
+def _digest(model: dict) -> str:
+    digest = str(model.get("digest") or model.get("sha256") or "")
+    return "" if digest == _LEGACY_SHA_PLACEHOLDER else digest
+
+
+def _model_config(model: dict, locked: list[str]) -> dict:
+    defaults = Config()
+    runtime = str(model.get("runtime", "ollama"))
+    return {
+        "model_enabled": bool(model.get("enabled", True)) and runtime != "off",
+        "model_runtime": runtime,
+        "model_name": str(model.get("name", defaults.model_name)),
+        "model_endpoint": _endpoint(model, locked),
+        "model_auth_env": str(model.get("auth_env", defaults.model_auth_env)),
+        "model_allow_remote": bool(model.get("allow_remote", False)),
+        "model_digest": _digest(model),
+        "model_timeout_seconds": float(model.get("timeout_seconds",
+                                                 defaults.model_timeout_seconds)),
+        "model_keep_alive": str(model.get("keep_alive", defaults.model_keep_alive)),
+        "model_max_parallel": int(model.get("max_parallel", defaults.model_max_parallel)),
+        "model_can_escalate": bool(model.get("can_escalate", True)),
+        "model_escalate_threshold": float(model.get("escalate_threshold", 0.8)),
+        "model_allow_threshold": float(model.get("allow_threshold", 0.6)),
+        "max_context_lines": int(model.get("max_context_lines", 6)),
+    }
+
+
+def _policy_config(policy: dict) -> dict:
+    pii = policy.get("pii") or {}
+    return {
+        "block_severity": _block_severity(policy),
+        "warn_severity": tuple(policy.get("warn_severity", ["medium"])),
+        "pii_locales": tuple(pii.get("locales", ["en", "en_IN"])),
+        "pii_engine": str(pii.get("engine", "regex")),
+        "action_in_tests": str(pii.get("action_in_tests", "replace_synthetic")),
+        "action_in_config": str(pii.get("action_in_config", "env_reference")),
+    }
+
+
 def load_config(path: str | None = None) -> "Config":
     root = gitutil.repo_root()
-    repo_path = path or os.path.join(root, ".zerotrace.yml")
-    raw, sources, locked = _layers(repo_path)
-
-    model = raw.get("model") or {}
-    policy = raw.get("policy") or {}
-    pii = policy.get("pii") or {}
+    raw, sources, locked = _layers(path or os.path.join(root, ".zerotrace.yml"))
     exceptions = raw.get("exceptions") or {}
     rules = raw.get("rules") or {}
-    vault = raw.get("vault") or {}
-
-    digest = str(model.get("digest") or model.get("sha256") or "")
-    if digest == _LEGACY_SHA_PLACEHOLDER:
-        digest = ""
-
-    runtime = str(model.get("runtime", "ollama"))
-    block = tuple(policy.get("block_severity", ["critical", "high"]))
-    if "critical" not in block:
-        block = ("critical",) + block  # a critical finding can never be configured to pass
-
-    defaults = Config()
-    if "model.endpoint" in locked and model.get("endpoint"):
-        endpoint = model["endpoint"]  # org-pinned endpoint: env can't redirect it
-    else:
-        endpoint = os.environ.get("ZEROTRACE_MODEL_ENDPOINT") or model.get("endpoint") \
-            or defaults.model_endpoint
     return Config(
         enabled=bool(raw.get("enabled", True)),
-        model_enabled=bool(model.get("enabled", True)) and runtime != "off",
-        model_runtime=runtime,
-        model_name=str(model.get("name", defaults.model_name)),
-        model_endpoint=str(endpoint),
-        model_auth_env=str(model.get("auth_env", defaults.model_auth_env)),
-        model_allow_remote=bool(model.get("allow_remote", False)),
-        model_digest=digest,
-        model_timeout_seconds=float(model.get("timeout_seconds", defaults.model_timeout_seconds)),
-        model_keep_alive=str(model.get("keep_alive", defaults.model_keep_alive)),
-        model_max_parallel=int(model.get("max_parallel", defaults.model_max_parallel)),
-        model_can_escalate=bool(model.get("can_escalate", True)),
-        model_escalate_threshold=float(model.get("escalate_threshold", 0.8)),
-        model_allow_threshold=float(model.get("allow_threshold", 0.6)),
-        max_context_lines=int(model.get("max_context_lines", 6)),
-        block_severity=block,
-        warn_severity=tuple(policy.get("warn_severity", ["medium"])),
-        pii_locales=tuple(pii.get("locales", ["en", "en_IN"])),
-        pii_engine=str(pii.get("engine", "regex")),
-        action_in_tests=str(pii.get("action_in_tests", "replace_synthetic")),
-        action_in_config=str(pii.get("action_in_config", "env_reference")),
+        **_model_config(raw.get("model") or {}, locked),
+        **_policy_config(raw.get("policy") or {}),
         exceptions_ttl_days=int(exceptions.get("ttl_days", 30)),
         rules_extra=tuple(str(p) for p in (rules.get("extra") or [])),
-        vault_scheme=str(vault.get("scheme", "")),
+        vault_scheme=str((raw.get("vault") or {}).get("scheme", "")),
         repo_root=root,
         sources=tuple(sources),
         locked=tuple(locked),

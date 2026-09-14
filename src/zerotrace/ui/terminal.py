@@ -12,6 +12,7 @@ from ..audit import exceptions as audit_exceptions
 from ..audit import log as audit_log
 from ..audit.fingerprint import of_finding
 from ..classifier.redact import language_of, redact
+from ..policy.engine import Decision
 from ..remediation import applier, proposer
 
 console = Console(stderr=False, highlight=False)
@@ -121,60 +122,71 @@ def _preview(decision, proposal) -> Panel:
     return Panel(body, title="Proposed fix (applied to the staged copy only)", border_style="green")
 
 
+def _apply_unstage(finding, cfg, resolved_paths: set[str]) -> bool:
+    for action in applier.unstage_and_ignore(finding.path):
+        console.print(f"  [green]✓[/] {action}")
+    resolved_paths.add(finding.path)
+    audit_log.append({"fingerprint": of_finding(finding), "path": finding.path,
+                      "action": "remediated", "method": "unstage_ignore"})
+    return True
+
+
+def _apply_fix(finding, cfg, mode: str) -> bool:
+    proposal = proposer.propose(Decision("block", finding.severity, "", finding), mode, cfg)
+    try:
+        where = applier.apply(finding.path, finding.line_no, proposal.new_line or "",
+                              finding.line_text)
+    except applier.StaleIndexError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return False
+    audit_log.append({"fingerprint": of_finding(finding), "path": finding.path,
+                      "action": "remediated",
+                      "method": "vault_reference" if mode == "reference" else "placeholder"})
+    console.print(f"[green]✓ Fix applied to the {where.replace('+', ' and ')} "
+                  "and re-staged.[/green]")
+    return True
+
+
+def _record_exception(finding, cfg) -> bool:
+    reason = Prompt.ask("Reason for this exception (recorded in the audit log)")
+    if not reason.strip():
+        console.print("[red]An exception needs a reason.[/red]")
+        return False
+    fingerprint = of_finding(finding)
+    audit_exceptions.add(fingerprint, reason, cfg.exceptions_ttl_days)
+    audit_log.append({"fingerprint": fingerprint, "path": finding.path,
+                      "action": "exception", "reason": reason})
+    console.print(f"[yellow]Exception recorded for {cfg.exceptions_ttl_days} days "
+                  "(scoped to this exact line).[/yellow]")
+    return True
+
+
+def _offer_choices(decision, cfg) -> tuple[list[str], str]:
+    """Print the preview(s) for this finding and return the menu."""
+    finding = decision.finding
+    if finding.line_no == 0:
+        console.print(_preview(decision, proposer.propose(decision, "unstage", cfg)))
+        return ["u", "e", "a"], "[U]nstage + gitignore  [E]xception  [A]bort"
+    console.print(_preview(decision, proposer.propose(decision, "reference", cfg)))
+    placeholder = proposer.propose(decision, "placeholder", cfg)
+    console.print(f"  [dim]or [R]: {_masked(placeholder.new_line or '', finding).strip()}[/]")
+    return (["v", "r", "e", "a"],
+            "[V] env/vault reference  [R] safe placeholder  [E]xception  [A]bort")
+
+
 def _interactive_resolve(decision, cfg, resolved_paths: set[str]) -> bool:
     """Returns True if this finding is resolved (fixed or excepted), False if aborted."""
-    f = decision.finding
+    finding = decision.finding
     console.print(_finding_panel(decision))
-
-    file_level = f.line_no == 0
-    if file_level:
-        proposal = proposer.propose(decision, "unstage", cfg)
-        console.print(_preview(decision, proposal))
-        choices, label = ["u", "e", "a"], "[U]nstage + gitignore  [E]xception  [A]bort"
-    else:
-        ref = proposer.propose(decision, "reference", cfg)
-        ph = proposer.propose(decision, "placeholder", cfg)
-        console.print(_preview(decision, ref))
-        console.print(f"  [dim]or [R]: {_masked(ph.new_line or '', f).strip()}[/]")
-        choices = ["v", "r", "e", "a"]
-        label = "[V] env/vault reference  [R] safe placeholder  [E]xception  [A]bort"
-
+    choices, label = _offer_choices(decision, cfg)
     choice = Prompt.ask(label, choices=choices, default="a")
-    fingerprint = of_finding(f)
 
     if choice == "u":
-        for action in applier.unstage_and_ignore(f.path):
-            console.print(f"  [green]✓[/] {action}")
-        resolved_paths.add(f.path)
-        audit_log.append({"fingerprint": fingerprint, "path": f.path, "action": "remediated",
-                          "method": "unstage_ignore"})
-        return True
-
+        return _apply_unstage(finding, cfg, resolved_paths)
     if choice in ("v", "r"):
-        proposal = proposer.propose(decision, "reference" if choice == "v" else "placeholder", cfg)
-        try:
-            where = applier.apply(f.path, f.line_no, proposal.new_line or "", f.line_text)
-        except applier.StaleIndexError as exc:
-            console.print(f"[red]{exc}[/red]")
-            return False
-        audit_log.append({"fingerprint": fingerprint, "path": f.path, "action": "remediated",
-                          "method": "vault_reference" if choice == "v" else "placeholder"})
-        console.print(f"[green]✓ Fix applied to the {where.replace('+', ' and ')} "
-                      "and re-staged.[/green]")
-        return True
-
+        return _apply_fix(finding, cfg, "reference" if choice == "v" else "placeholder")
     if choice == "e":
-        reason = Prompt.ask("Reason for this exception (recorded in the audit log)")
-        if not reason.strip():
-            console.print("[red]An exception needs a reason.[/red]")
-            return False
-        audit_exceptions.add(fingerprint, reason, cfg.exceptions_ttl_days)
-        audit_log.append({"fingerprint": fingerprint, "path": f.path,
-                          "action": "exception", "reason": reason})
-        console.print(f"[yellow]Exception recorded for {cfg.exceptions_ttl_days} days "
-                      "(scoped to this exact line).[/yellow]")
-        return True
-
+        return _record_exception(finding, cfg)
     console.print("[red]Aborted. Fix manually and re-stage before committing.[/red]")
     return False
 

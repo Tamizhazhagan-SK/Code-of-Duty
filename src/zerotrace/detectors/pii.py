@@ -109,48 +109,79 @@ def _email_finding(match: re.Match, unit: Unit) -> Finding | None:
     return _mk(unit, rule, severity, confidence, match.group(0), explain)
 
 
+def _emails(unit: Unit) -> list[Finding]:
+    found = [_email_finding(m, unit) for m in _EMAIL_RE.finditer(unit.text)]
+    return [f for f in found if f is not None]
+
+
+def _phones(unit: Unit) -> list[Finding]:
+    out = [_mk(unit, "pii_phone", "medium", 0.55, m.group(0),
+               "A telephone number. Real numbers are personal data; use +1-555-0100-style fakes.")
+           for m in _PHONE_RE.finditer(unit.text)]
+    if _PHONE_CONTEXT_RE.search(unit.text):
+        out += [_mk(unit, "pii_phone", "medium", 0.55, m.group(0),
+                    "A mobile number next to a phone/contact field.")
+                for m in _PHONE_BARE_RE.finditer(unit.text)]
+    return out
+
+
+def _simple_matches(unit: Unit) -> list[Finding]:
+    """Patterns that need no checksum: internal ids and PAN."""
+    out = []
+    for regex, rule, severity, confidence, why in (
+        (_QXID_RE, "qxid_internal_id", "high", 0.85,
+         "An internal employee identifier (QX-ID). It links code to a real staff member."),
+        (_PAN_RE, "pii_pan_india", "high", 0.8,
+         "An Indian PAN (tax ID) number. This is regulated personal data under the DPDP Act."),
+    ):
+        out += [_mk(unit, rule, severity, confidence, m.group(0), why)
+                for m in regex.finditer(unit.text)]
+    return out
+
+
+def _aadhaar(unit: Unit) -> list[Finding]:
+    out = []
+    for m in _AADHAAR_RE.finditer(unit.text):
+        digits = re.sub(r"\D", "", m.group(0))
+        if len(digits) == 12 and verhoeff_valid(digits):
+            out.append(_mk(unit, "pii_aadhaar", "high", 0.9, m.group(0),
+                           "A checksum-valid Aadhaar number. This is regulated national-ID data "
+                           "(UIDAI/DPDP)."))
+    return out
+
+
+def _cards(unit: Unit) -> list[Finding]:
+    out = []
+    for m in _CARD_RE.finditer(unit.text):
+        digits = re.sub(r"\D", "", m.group(0))
+        if not (13 <= len(digits) <= 19 and _card_brand_plausible(digits) and luhn_valid(digits)):
+            continue
+        known_test = digits in _KNOWN_TEST_CARDS
+        out.append(_mk(
+            unit, "pii_payment_card", "low" if known_test else "high",
+            0.3 if known_test else 0.9, m.group(0),
+            "A well-known processor test card number." if known_test else
+            "A Luhn-valid payment card number. PCI-DSS forbids storing it in source.",
+        ))
+    return out
+
+
+def _ibans(unit: Unit) -> list[Finding]:
+    return [_mk(unit, "pii_iban", "high", 0.85, m.group(0),
+                "A checksum-valid IBAN (bank account number).")
+            for m in _IBAN_RE.finditer(unit.text) if iban_valid(m.group(0))]
+
+
+_SCANNERS = (_emails, _phones, _simple_matches, _aadhaar, _cards, _ibans)
+
+
 def _regex_scan(units: list[Unit]) -> list[Finding]:
     findings: list[Finding] = []
     for unit in units:
         if unit.file_class == "generated":
             continue
-        text = unit.text
-        for m in _EMAIL_RE.finditer(text):
-            f = _email_finding(m, unit)
-            if f:
-                findings.append(f)
-        for m in _PHONE_RE.finditer(text):
-            findings.append(_mk(unit, "pii_phone", "medium", 0.55, m.group(0),
-                                "A telephone number. Real numbers are personal data; use +1-555-0100-style fakes."))
-        if _PHONE_CONTEXT_RE.search(text):
-            for m in _PHONE_BARE_RE.finditer(text):
-                findings.append(_mk(unit, "pii_phone", "medium", 0.55, m.group(0),
-                                    "A mobile number next to a phone/contact field."))
-        for m in _QXID_RE.finditer(text):
-            findings.append(_mk(unit, "qxid_internal_id", "high", 0.85, m.group(0),
-                                "An internal employee identifier (QX-ID). It links code to a real staff member."))
-        for m in _PAN_RE.finditer(text):
-            findings.append(_mk(unit, "pii_pan_india", "high", 0.8, m.group(0),
-                                "An Indian PAN (tax ID) number. This is regulated personal data under the DPDP Act."))
-        for m in _AADHAAR_RE.finditer(text):
-            digits = re.sub(r"\D", "", m.group(0))
-            if len(digits) == 12 and verhoeff_valid(digits):
-                findings.append(_mk(unit, "pii_aadhaar", "high", 0.9, m.group(0),
-                                    "A checksum-valid Aadhaar number. This is regulated national-ID data (UIDAI/DPDP)."))
-        for m in _CARD_RE.finditer(text):
-            digits = re.sub(r"\D", "", m.group(0))
-            if 13 <= len(digits) <= 19 and _card_brand_plausible(digits) and luhn_valid(digits):
-                test_card = digits in _KNOWN_TEST_CARDS
-                findings.append(_mk(
-                    unit, "pii_payment_card", "low" if test_card else "high",
-                    0.3 if test_card else 0.9, m.group(0),
-                    "A well-known processor test card number." if test_card else
-                    "A Luhn-valid payment card number. PCI-DSS forbids storing it in source.",
-                ))
-        for m in _IBAN_RE.finditer(text):
-            if iban_valid(m.group(0)):
-                findings.append(_mk(unit, "pii_iban", "high", 0.85, m.group(0),
-                                    "A checksum-valid IBAN (bank account number)."))
+        for scanner in _SCANNERS:
+            findings += scanner(unit)
     return findings
 
 

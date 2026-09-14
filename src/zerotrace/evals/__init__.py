@@ -9,7 +9,7 @@ import secrets
 import statistics
 import string
 import time
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from importlib import resources
 
 from rich.console import Console
@@ -71,55 +71,84 @@ def _finding(case: dict) -> Finding:
     )
 
 
+@dataclass
+class Score:
+    """Outcome counters for one model across all cases."""
+    real: int = 0
+    benign: int = 0
+    unsafe: int = 0          # a real secret the model would ALLOW: the metric that matters
+    escalated: int = 0
+    allowed_benign: int = 0
+    failed: int = 0
+    latencies: list[float] = field(default_factory=list)
+    misses: list[str] = field(default_factory=list)
+
+    def percentile(self, fraction: float) -> float:
+        if not self.latencies:
+            return 0.0
+        ordered = sorted(self.latencies)
+        return ordered[max(0, int(len(ordered) * fraction) - 1)]
+
+    def row(self, model: str) -> tuple[str, ...]:
+        return (model, f"{self.unsafe}/{self.real}", f"{self.escalated}/{self.real}",
+                f"{self.allowed_benign}/{self.benign}", str(self.failed),
+                f"{statistics.median(self.latencies) if self.latencies else 0:.0f}",
+                f"{self.percentile(0.95):.0f}")
+
+
+def _judge(score: Score, case: dict, verdict, cfg) -> None:
+    is_real = case["label"] == "real"
+    score.real += is_real
+    score.benign += not is_real
+    if verdict is None:
+        score.failed += 1
+        return
+    allow = (verdict.classification == "TEST_FIXTURE_OR_PLACEHOLDER"
+             and verdict.confidence >= cfg.model_allow_threshold)
+    block = (verdict.classification == "REAL_SECRET"
+             and verdict.confidence >= cfg.model_escalate_threshold)
+    if is_real and allow:
+        score.unsafe += 1
+        score.misses.append(f"{case['id']}: {verdict.reason}")
+    if is_real and block:
+        score.escalated += 1
+    if not is_real and allow:
+        score.allowed_benign += 1
+
+
+def _score_model(cfg, cases: list[dict], runs: int) -> Score:
+    from ..classifier import llm
+    score = Score()
+    for _ in range(runs):
+        for case in cases:
+            finding = _finding(case)
+            start = time.monotonic()
+            verdict = llm.classify(finding, cfg)
+            score.latencies.append((time.monotonic() - start) * 1000)
+            _judge(score, case, verdict, cfg)
+    return score
+
+
 def run_eval(cases_path: str | None, models: list[str], runs: int = 1) -> int:
     from ..classifier import llm
     console = Console()
     base = load_config()
     cases = load_cases(cases_path)
-    models = models or [base.model_name]
     table = Table(title=f"AI tie-break eval · {len(cases)} cases × {runs} run(s)")
     for col in ("model", "unsafe allows (real→allow)", "escalated real→block",
                 "noise removed (placeholder/fixture→allow)", "no verdict", "p50 ms", "p95 ms"):
         table.add_column(col, justify="right" if col != "model" else "left")
+
     worst = 0
-    for model in models:
+    for model in models or [base.model_name]:
         cfg = replace(base, model_name=model)
-        warm = llm.warm(cfg)
-        if warm is None:
+        if llm.warm(cfg) is None:
             table.add_row(model, "-", "-", "-", "unreachable", "-", "-")
             continue
-        real = benign = unsafe = escalated = allowed_benign = failed = 0
-        latencies: list[float] = []
-        misses: list[str] = []
-        for _ in range(runs):
-            for case in cases:
-                finding = _finding(case)
-                start = time.monotonic()
-                verdict = llm.classify(finding, cfg)
-                latencies.append((time.monotonic() - start) * 1000)
-                is_real = case["label"] == "real"
-                real += is_real
-                benign += not is_real
-                if verdict is None:
-                    failed += 1
-                    continue
-                allow = verdict.classification == "TEST_FIXTURE_OR_PLACEHOLDER" and \
-                    verdict.confidence >= cfg.model_allow_threshold
-                block = verdict.classification == "REAL_SECRET" and \
-                    verdict.confidence >= cfg.model_escalate_threshold
-                if is_real and allow:
-                    unsafe += 1
-                    misses.append(f"{case['id']}: {verdict.reason}")
-                if is_real and block:
-                    escalated += 1
-                if not is_real and allow:
-                    allowed_benign += 1
-        p50 = statistics.median(latencies) if latencies else 0
-        p95 = sorted(latencies)[int(len(latencies) * 0.95) - 1] if latencies else 0
-        worst = max(worst, unsafe)
-        table.add_row(model, f"{unsafe}/{real}", f"{escalated}/{real}",
-                      f"{allowed_benign}/{benign}", str(failed), f"{p50:.0f}", f"{p95:.0f}")
-        for miss in misses:
+        score = _score_model(cfg, cases, runs)
+        worst = max(worst, score.unsafe)
+        table.add_row(*score.row(model))
+        for miss in score.misses:
             console.print(f"[red]unsafe allow[/] {model}: {miss}")
     console.print(table)
     console.print("[dim]Unsafe allows are the metric that matters: a MEDIUM finding the model "

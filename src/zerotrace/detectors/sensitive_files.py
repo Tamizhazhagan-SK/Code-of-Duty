@@ -9,29 +9,40 @@ from ..collectors.staged_diff import Changeset, classify_file
 
 _ENV_SAFE_SUFFIXES = (".example", ".sample", ".template", ".dist", ".defaults", ".tpl")
 
+_SSH_KEY = "SSH private key"
+_SSH_KEY_WHY = "An SSH private key authenticates as you to every server that trusts it."
+_KEYSTORE_WHY = ("Keystores bundle private keys with certificates, and their passwords are "
+                 "often weak.")
+_NETRC_WHY = "netrc stores machine logins and passwords in plain text."
+_TFSTATE_WHY = ("Terraform state stores every resource attribute, including generated passwords "
+                "and keys, in plain text.")
+_KUBECONFIG = "Kubernetes config"
+_KUBECONFIG_WHY = "The kubeconfig embeds cluster credentials."
+_KUBECONFIG_PATTERN = r"client-key-data|token:|password:"
+
 # (glob on basename, severity, title, content regex required (None = always), explanation)
 _RULES: list[tuple[str, str, str, str | None, str]] = [
-    ("id_rsa", "critical", "SSH private key", None, "An SSH private key authenticates as you to every server that trusts it."),
-    ("id_dsa", "critical", "SSH private key", None, "An SSH private key authenticates as you to every server that trusts it."),
-    ("id_ecdsa", "critical", "SSH private key", None, "An SSH private key authenticates as you to every server that trusts it."),
-    ("id_ed25519", "critical", "SSH private key", None, "An SSH private key authenticates as you to every server that trusts it."),
+    ("id_rsa", "critical", _SSH_KEY, None, _SSH_KEY_WHY),
+    ("id_dsa", "critical", _SSH_KEY, None, _SSH_KEY_WHY),
+    ("id_ecdsa", "critical", _SSH_KEY, None, _SSH_KEY_WHY),
+    ("id_ed25519", "critical", _SSH_KEY, None, _SSH_KEY_WHY),
     ("*.pem", "critical", "PEM private key", r"PRIVATE KEY", "The PEM file contains a private key, not just a certificate."),
     ("*.key", "critical", "Private key file", r"(?:PRIVATE KEY)|(?:^[A-Za-z0-9+/=\s]{200,}$)", "The .key file holds private key material."),
-    ("*.p12", "critical", "PKCS#12 keystore", None, "Keystores bundle private keys with certificates, and their passwords are often weak."),
-    ("*.pfx", "critical", "PKCS#12 keystore", None, "Keystores bundle private keys with certificates, and their passwords are often weak."),
+    ("*.p12", "critical", "PKCS#12 keystore", None, _KEYSTORE_WHY),
+    ("*.pfx", "critical", "PKCS#12 keystore", None, _KEYSTORE_WHY),
     ("*.jks", "critical", "Java keystore", None, "Java keystores bundle private keys and trusted certificates."),
     ("*.keystore", "critical", "Keystore", None, "Keystores (for example Android signing keys) must never be in source control."),
     ("*.kdbx", "critical", "KeePass database", None, "A password-manager vault should never be committed."),
     (".git-credentials", "critical", "Git credential store", None, "The file stores git passwords and tokens in plain text."),
-    (".netrc", "critical", "netrc credentials", None, "netrc stores machine logins and passwords in plain text."),
-    ("_netrc", "critical", "netrc credentials", None, "netrc stores machine logins and passwords in plain text."),
+    (".netrc", "critical", "netrc credentials", None, _NETRC_WHY),
+    ("_netrc", "critical", "netrc credentials", None, _NETRC_WHY),
     (".pgpass", "critical", "PostgreSQL password file", None, ".pgpass stores database passwords in plain text."),
-    ("*.tfstate", "critical", "Terraform state", None, "Terraform state stores every resource attribute, including generated passwords and keys, in plain text."),
-    ("*.tfstate.backup", "critical", "Terraform state backup", None, "Terraform state stores every resource attribute, including secrets, in plain text."),
+    ("*.tfstate", "critical", "Terraform state", None, _TFSTATE_WHY),
+    ("*.tfstate.backup", "critical", "Terraform state backup", None, _TFSTATE_WHY),
     ("credentials", "critical", "Cloud credentials file", r"aws_secret_access_key|aws_access_key_id|\[default\]", "This looks like an ~/.aws/credentials file."),
-    ("*.kubeconfig", "critical", "Kubernetes config", r"client-key-data|token:|password:", "The kubeconfig embeds cluster credentials."),
-    ("kubeconfig", "critical", "Kubernetes config", r"client-key-data|token:|password:", "The kubeconfig embeds cluster credentials."),
-    ("config", "critical", "Kubernetes config", r"client-key-data|^\s*token:\s*\S{20,}", "The kubeconfig embeds cluster credentials."),
+    ("*.kubeconfig", "critical", _KUBECONFIG, _KUBECONFIG_PATTERN, _KUBECONFIG_WHY),
+    ("kubeconfig", "critical", _KUBECONFIG, _KUBECONFIG_PATTERN, _KUBECONFIG_WHY),
+    ("config", "critical", _KUBECONFIG, r"client-key-data|^\s*token:\s*\S{20,}", _KUBECONFIG_WHY),
     (".npmrc", "high", "npm credentials", r"_authToken\s*=\s*[^$\s]|_password\s*=", "The .npmrc contains a registry auth token."),
     (".pypirc", "high", "PyPI credentials", r"password\s*[:=]\s*\S", "The .pypirc contains a package index password."),
     ("*.tfvars", "medium", "Terraform variables", r"(?i)(password|secret|token|key)\s*=", "The .tfvars file often carries real secrets. Keep it local or use a secret backend."),

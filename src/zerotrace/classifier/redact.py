@@ -6,6 +6,7 @@ around it with every literal masked, never the value itself.
 import os
 import re
 
+from . import prompt
 from ..detectors import entropy
 from ..detectors.filters import is_env_reference
 
@@ -13,6 +14,7 @@ _STRING_LIT = re.compile(r"""(["'`])((?:\\.|(?!\1).)*)\1""")
 _TOKENISH = re.compile(r"[A-Za-z0-9+/=_\-.~]{16,}")
 _UNQUOTED_VALUE = re.compile(r"^(\s*(?:export\s+|ENV\s+|ARG\s+|-\s+)?[\w.\-]+\s*[=:]\s*)([^\s\"'`(){}\[\]#][^\s#]*)(\s*(?:#.*)?)$")
 _SECRETISH = re.compile(r"(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]+PRIVATE KEY-----)")
+REDACTED = "<REDACTED>"
 _MARKER = re.compile(r"^<(CANDIDATE|REDACTED|STR len=\d+|TOKEN len=\d+|VAL len=\d+)>$")
 
 _PUBLIC_PREFIXES = (
@@ -87,15 +89,15 @@ def scrub_window(window: str, candidate: str = "", extra_values: tuple[str, ...]
     if candidate:
         text = text.replace(candidate, "<CANDIDATE>")
     for value in sorted({v for v in extra_values if v and len(v) >= 4}, key=len, reverse=True):
-        text = text.replace(value, "<REDACTED>")
-    text = _SECRETISH.sub("<REDACTED>", text)
+        text = text.replace(value, REDACTED)
+    text = _SECRETISH.sub(REDACTED, text)
 
     from ..detectors import rulepack
     rules = rulepack.load_rules()
     out_lines = []
     for line in text.splitlines():
         for _rule, value, _span in list(rulepack.scan_line(line, rules)):
-            line = line.replace(value, "<REDACTED>")
+            line = line.replace(value, REDACTED)
         line = _mask_literals(line)
         line = _mask_unquoted(line)
         line = _mask_tokens(line)
@@ -126,11 +128,11 @@ def features(finding) -> dict:
     return {
         "detector": finding.source or "unknown",
         "rule": finding.rule_id,
-        "identifier": _identifier_for(finding) or "(none)",
+        "identifier": _identifier_for(finding) or prompt.NONE,
         "language": language_of(finding.path),
         "file_class": finding.file_class,
         "file_name": os.path.basename(finding.path),
-        "known_public_prefix": prefix or "(none)",
+        "known_public_prefix": prefix or prompt.NONE,
         "value_shape": entropy.shape(value[len(prefix):] if prefix else value),
         "env_lookup_nearby": is_env_reference(finding.context_snippet or ""),
     }

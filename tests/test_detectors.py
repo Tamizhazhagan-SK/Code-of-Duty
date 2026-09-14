@@ -235,3 +235,10 @@ def test_word_like_identifiers_are_not_credentials():
     # A strong name or a random value still blocks.
     assert _scan("app.py", f'api_key = "{rand(24)}9aZ"')
     assert _scan("app.yml", f"  cluster_key: {rand(28)}9aZ")
+
+
+def test_regex_patterns_are_not_credentials():
+    assert _scan("rules.py", '_KUBE_SECRET_RE = r"client-key-data|token:|password:"') == []
+    assert _scan("v.py", 'PASSWORD_PATTERN = r"^(?=.*[A-Z])(?=.*\\d).{12,}$"') == []
+    assert _scan("v.js", 'const tokenRegex = /[A-Za-z0-9]{32}/;') == []
+    assert _scan("app.py", f'api_secret = "{rand(26)}9aZ"')      # still caught
