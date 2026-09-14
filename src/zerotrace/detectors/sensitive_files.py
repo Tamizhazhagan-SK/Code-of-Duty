@@ -16,7 +16,7 @@ _RULES: list[tuple[str, str, str, str | None, str]] = [
     ("id_ecdsa", "critical", "SSH private key", None, "An SSH private key authenticates as you to every server that trusts it."),
     ("id_ed25519", "critical", "SSH private key", None, "An SSH private key authenticates as you to every server that trusts it."),
     ("*.pem", "critical", "PEM private key", r"PRIVATE KEY", "The PEM file contains a private key, not just a certificate."),
-    ("*.key", "critical", "Private key file", r"PRIVATE KEY|^[A-Za-z0-9+/=\s]{200,}$", "The .key file holds private key material."),
+    ("*.key", "critical", "Private key file", r"(?:PRIVATE KEY)|(?:^[A-Za-z0-9+/=\s]{200,}$)", "The .key file holds private key material."),
     ("*.p12", "critical", "PKCS#12 keystore", None, "Keystores bundle private keys with certificates, and their passwords are often weak."),
     ("*.pfx", "critical", "PKCS#12 keystore", None, "Keystores bundle private keys with certificates, and their passwords are often weak."),
     ("*.jks", "critical", "Java keystore", None, "Java keystores bundle private keys and trusted certificates."),

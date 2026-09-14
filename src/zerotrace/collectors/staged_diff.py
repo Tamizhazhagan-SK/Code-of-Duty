@@ -128,6 +128,7 @@ def collect_staged() -> Changeset:
 
 def collect_commit(sha: str) -> Changeset:
     """Lines introduced by one commit (vs. its first parent; root commits vs. empty tree)."""
+    gitutil.checked_rev(sha)
     diff = gitutil.git("-c", "core.quotepath=false", "diff-tree", "-p", "-r", "--root",
                        "--no-commit-id", "--first-parent", *_DIFF_FLAGS, sha)
     return parse_diff(diff, rev=sha)
@@ -135,6 +136,7 @@ def collect_commit(sha: str) -> Changeset:
 
 def collect_tree(rev: str = "HEAD") -> Changeset:
     """Every line of every tracked file at `rev`, as if newly added (onboarding / --all)."""
+    gitutil.checked_rev(rev)
     diff = gitutil.git("-c", "core.quotepath=false", "diff",
                        "4b825dc642cb6eb9a060e54bf8d69288fbee4904",  # the empty tree
                        rev, *_DIFF_FLAGS)
