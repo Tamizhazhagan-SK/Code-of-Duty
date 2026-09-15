@@ -84,6 +84,7 @@ never touched.
 - `docs/AI_CLASSIFIER.md` · `docs/AWS_INFERENCE.md`: the model, redaction, and moving inference to AWS
 - `docs/THREAT_MODEL.md` · `SECURITY.md` · `docs/POLICY.md` · `docs/ADR/`
 - `docs/POSITIONING.md`: prior art and what is actually new here
+- `docs/RESEARCH.md`: why this still matters when the company already runs a vault (with sources)
 
 ZeroTrace is a **helpful guardrail, not a security boundary**: pair it with server-side push
 protection and credential rotation.

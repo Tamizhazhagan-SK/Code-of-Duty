@@ -26,6 +26,12 @@ Saying so up front makes the project more credible, not less.
    policy with locked keys, a pre-push backstop, and a config-only path from laptop inference
    to a company-hosted endpoint.
 
+## The "we already have a vault" objection
+Measured: repositories whose CI/CD shows a secrets manager in use still leaked at **5.1%**,
+slightly worse than the 4.6% GitHub average. A vault governs values it already holds; it cannot
+see a credential being typed into a file, copied into `.env`, or a customer record becoming a
+test fixture. See `docs/RESEARCH.md` for the evidence, the gap map and the 30-second answer.
+
 ## Honest limits
 Client hooks are advisory (`--no-verify`, husky overrides), so server-side scanning stays the
 enforcement point. Detection is best-effort, and this is not a DLP platform or a compliance

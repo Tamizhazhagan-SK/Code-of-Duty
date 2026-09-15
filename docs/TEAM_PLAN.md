@@ -82,7 +82,8 @@ flow for Windows, plus anything that broke. File bugs as issues; small script fi
 into `demo/run_demo.ps1` (that file is yours from now on).
 
 ### B3. Demo runbook and pitch  ⏱ ~3 h  🟠
-The story, not the code. Build it around the four beats the use-case document promises: detect →
+The story, not the code. **Read `docs/RESEARCH.md` first** — it has the market numbers, the
+"we already have a vault" rebuttal, and the ten scenarios mapped to our fixtures. Build it around the four beats the use-case document promises: detect →
 explain → sanitize → prevent.
 
 Suggested structure for `docs/DEMO_RUNBOOK.md` + slides:
