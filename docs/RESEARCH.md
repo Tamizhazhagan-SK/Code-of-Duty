@@ -19,20 +19,21 @@ authoritative copy lives; it does not stop a copy being pasted somewhere else.
 
 ## 2. Scale: the problem is growing, not shrinking
 
-| Finding | Figure | Source |
-|---|---|---|
-| New hardcoded secrets on public GitHub in 2025 | **28.65 million**, +34% YoY, the largest jump recorded | GitGuardian 2026² |
-| Growth since 2021 | leaks **+152%** vs developer base +98% | GitGuardian 2026² |
-| Internal/private repositories containing a secret | **32.2%** of internal repos (≈6× public); 35% of private repos in the prior year's data | GitGuardian 2026², 2025³ |
-| AWS IAM keys in private repos | **8%** of private repos, 5× the public rate | GitGuardian 2025³ |
-| Leaked secrets still valid years later | **64%** of 2022's valid secrets were still valid in Jan 2026 (70% in the prior report) | GitGuardian 2026², 2025³ |
-| Incidents originating **outside** repositories (Slack, Jira, Confluence) | **28%**, and 13 points more likely to be critical | GitGuardian 2026² |
-| AI-assisted commits | **3.2% leak rate vs 1.5% baseline** (~2×) | GitGuardian 2026² |
-| AI-service credentials leaked | **1.27M**, +81% YoY; 8 of the 10 fastest-growing detectors | GitGuardian 2026² |
-| Secrets in MCP config files | **24,008** unique secrets, 8.8% still valid | GitGuardian 2026² |
-| Machine identities vs humans | **82:1**, ~half with privileged access | CyberArk 2025⁴ |
+| Finding                                                                       | Figure                                                                                          | Source                     |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------- |
+| New hardcoded secrets on public GitHub in 2025                                | **28.65 million**, +34% YoY, the largest jump recorded                                    | GitGuardian 2026²         |
+| Growth since 2021                                                             | leaks**+152%** vs developer base +98%                                                     | GitGuardian 2026²         |
+| Internal/private repositories containing a secret                             | **32.2%** of internal repos (≈6× public); 35% of private repos in the prior year's data | GitGuardian 2026², 2025³ |
+| AWS IAM keys in private repos                                                 | **8%** of private repos, 5× the public rate                                              | GitGuardian 2025³         |
+| Leaked secrets still valid years later                                        | **64%** of 2022's valid secrets were still valid in Jan 2026 (70% in the prior report)    | GitGuardian 2026², 2025³ |
+| Incidents originating**outside** repositories (Slack, Jira, Confluence) | **28%**, and 13 points more likely to be critical                                         | GitGuardian 2026²         |
+| AI-assisted commits                                                           | **3.2% leak rate vs 1.5% baseline** (~2×)                                                | GitGuardian 2026²         |
+| AI-service credentials leaked                                                 | **1.27M**, +81% YoY; 8 of the 10 fastest-growing detectors                                | GitGuardian 2026²         |
+| Secrets in MCP config files                                                   | **24,008** unique secrets, 8.8% still valid                                               | GitGuardian 2026²         |
+| Machine identities vs humans                                                  | **82:1**, ~half with privileged access                                                    | CyberArk 2025⁴            |
 
 Two implications for our pitch:
+
 1. **Private is not safe.** Most enterprise repos are private, and private repos leak *more*, not
    less, because people relax when "only we can see it". Every argument that begins "but it is an
    internal repo" is refuted by this row.
@@ -45,19 +46,19 @@ AWS Secrets Manager, Azure Key Vault, CyberArk Conjur and HashiCorp Vault solve 
 access control, distribution, rotation and audit** for secrets that are *already* under
 management. The gaps are the human paths around them:
 
-| Gap | Why it survives a vault | Does ZeroTrace help? |
-|---|---|---|
-| **Secret zero / bootstrap** | Something must authenticate *to* the vault. That bootstrap credential often ends up in a config file, a Dockerfile or a CI variable⁵ | **Yes** — it is a credential in a file at commit time |
-| **Local development** | Developers copy a value out of the vault into `.env`, `settings_local.py`, a notebook or a launch config to work offline | **Yes** — `.env` is unstaged and a keys-only `.env.example` is generated |
-| **Test fixtures with production-like data** | Vaults hold credentials, not customer records. Nothing stops a support ticket's data becoming a fixture | **Yes, uniquely** — PII detection (email, phone, PAN, Aadhaar, cards, IBAN) |
-| **Legacy and glue code** | Scripts, Terraform, Dockerfiles, RPA workflows and one-off jobs predate the vault or skip it under deadline | **Yes** — detection across 10+ languages and config formats |
-| **Third parties and contractors** | The Toyota leak came from a *subcontractor* publishing code containing a key⁶ | **Yes, if installed on their machine**; otherwise the CI/server scan is the net |
-| **Collaboration tools** | 28% of incidents are in Slack/Jira/Confluence² | **No** — out of scope, and we say so |
-| **Rotation, expiry, least privilege** | Exactly what vaults are for | **No** — complementary, not competing |
+| Gap                                               | Why it survives a vault                                                                                                                | Does ZeroTrace help?                                                                  |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Secret zero / bootstrap**                 | Something must authenticate*to* the vault. That bootstrap credential often ends up in a config file, a Dockerfile or a CI variable⁵ | **Yes** — it is a credential in a file at commit time                          |
+| **Local development**                       | Developers copy a value out of the vault into`.env`, `settings_local.py`, a notebook or a launch config to work offline            | **Yes** — `.env` is unstaged and a keys-only `.env.example` is generated   |
+| **Test fixtures with production-like data** | Vaults hold credentials, not customer records. Nothing stops a support ticket's data becoming a fixture                                | **Yes, uniquely** — PII detection (email, phone, PAN, Aadhaar, cards, IBAN)    |
+| **Legacy and glue code**                    | Scripts, Terraform, Dockerfiles, RPA workflows and one-off jobs predate the vault or skip it under deadline                            | **Yes** — detection across 10+ languages and config formats                    |
+| **Third parties and contractors**           | The Toyota leak came from a*subcontractor* publishing code containing a key⁶                                                        | **Yes, if installed on their machine**; otherwise the CI/server scan is the net |
+| **Collaboration tools**                     | 28% of incidents are in Slack/Jira/Confluence²                                                                                        | **No** — out of scope, and we say so                                           |
+| **Rotation, expiry, least privilege**       | Exactly what vaults are for                                                                                                            | **No** — complementary, not competing                                          |
 
 **The honest framing for a judge:** ZeroTrace does not replace a vault. A vault is the
 destination; ZeroTrace is the guardrail on the road that stops the value ending up somewhere
-else along the way. An organisation with a mature vault still leaked at 5.1%.¹
+else along the way. An organisation with a mature vault still leaked at 5.1%.¹ 
 
 ## 4. The RPA case (directly relevant to the other team you mentioned)
 
@@ -68,6 +69,7 @@ the RPA developer who consumes them), and for higher assurance a **credential st
 CyberArk, Azure Key Vault, HashiCorp Vault, AWS Secrets Manager, BeyondTrust or Thycotic.⁷
 
 Why this matters for us:
+
 - A private repo holding bot credentials is a **shared, long-lived, rarely-rotated** secret store
   with no expiry and read access for everyone with repo access, including CI and any AI agent
   wired into it.
@@ -92,31 +94,31 @@ Why this matters for us:
 
 ## 6. Where we sit against existing tools
 
-| Tool | Stops it before commit | Guided fix | PII | Works in every repo without opt-in |
-|---|---|---|---|---|
-| GitHub push protection | At push, and only for **partner patterns**; generic secrets were **58%** of leaks³ | No | No | Only on GitHub |
-| Gitleaks / trufflehog in CI | No — after the secret is in history | No | No | Per-pipeline |
-| GitGuardian / vendor hooks | Yes (commercial) | Partial | Limited | Per-repo install |
-| Vault / Secrets Manager | No — different layer | N/A | No | N/A |
-| **ZeroTrace** | **Yes, at commit, in every repo from one install** | **Yes, language-aware** | **Yes, incl. India-specific** | **Yes (global hooks path)** |
+| Tool                        | Stops it before commit                                                                         | Guided fix                    | PII                                 | Works in every repo without opt-in |
+| --------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------------------- | ---------------------------------- |
+| GitHub push protection      | At push, and only for**partner patterns**; generic secrets were **58%** of leaks³ | No                            | No                                  | Only on GitHub                     |
+| Gitleaks / trufflehog in CI | No — after the secret is in history                                                           | No                            | No                                  | Per-pipeline                       |
+| GitGuardian / vendor hooks  | Yes (commercial)                                                                               | Partial                       | Limited                             | Per-repo install                   |
+| Vault / Secrets Manager     | No — different layer                                                                          | N/A                           | No                                  | N/A                                |
+| **ZeroTrace**         | **Yes, at commit, in every repo from one install**                                       | **Yes, language-aware** | **Yes, incl. India-specific** | **Yes (global hooks path)**  |
 
 Our defensible combination, stated plainly: **one machine-wide install, secrets *and* PII in one
 policy engine, a bounded local AI that never sees the value, and a fix rather than a failure.**
 
 ## 7. Scenarios to demo or test (each maps to a fixture we already ship)
 
-| # | Scenario | Vault in place? | What ZeroTrace does |
-|---|---|---|---|
-| 1 | Live Stripe key pasted into `payments/charge.py` while debugging a refund | Yes, unused in the moment | Blocks; rewrites to `os.environ[...]` |
-| 2 | `DATABASE_URL` with a password in a connection string | Yes, but this is glue code | Blocks; rewrites, names `DATABASE_URL` |
-| 3 | `.env` staged by accident | Irrelevant — it is a local file | Unstages, gitignores, writes `.env.example` |
-| 4 | Internal employee email + employee ID in a test fixture | **Vault does nothing** | Blocks; synthetic replacement |
-| 5 | Aadhaar/PAN/card number in fixtures or logs | **Vault does nothing** | Checksum-validated block (DPDP/GDPR) |
-| 6 | Bootstrap token for the vault itself in a Dockerfile `ENV` | The secret-zero gap⁵ | Blocks; suggests build secrets/runtime env |
-| 7 | RPA/UiPath credentials committed for a bot to read | Yes, but bypassed | Blocks; points to Orchestrator credential assets |
-| 8 | AI agent writes a key into code and commits it | Vault unaware | Same hook, no extra setup (agents use git) |
-| 9 | Developer bypasses with `--no-verify` | — | Pre-push hook catches it before it leaves the laptop |
-| 10 | Someone's machine has no ZeroTrace | — | CI `zerotrace scan --range` + push protection |
+| #  | Scenario                                                                   | Vault in place?                  | What ZeroTrace does                                  |
+| -- | -------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
+| 1  | Live Stripe key pasted into`payments/charge.py` while debugging a refund | Yes, unused in the moment        | Blocks; rewrites to`os.environ[...]`               |
+| 2  | `DATABASE_URL` with a password in a connection string                    | Yes, but this is glue code       | Blocks; rewrites, names`DATABASE_URL`              |
+| 3  | `.env` staged by accident                                                | Irrelevant — it is a local file | Unstages, gitignores, writes`.env.example`         |
+| 4  | Internal employee email + employee ID in a test fixture                    | **Vault does nothing**     | Blocks; synthetic replacement                        |
+| 5  | Aadhaar/PAN/card number in fixtures or logs                                | **Vault does nothing**     | Checksum-validated block (DPDP/GDPR)                 |
+| 6  | Bootstrap token for the vault itself in a Dockerfile`ENV`                | The secret-zero gap⁵            | Blocks; suggests build secrets/runtime env           |
+| 7  | RPA/UiPath credentials committed for a bot to read                         | Yes, but bypassed                | Blocks; points to Orchestrator credential assets     |
+| 8  | AI agent writes a key into code and commits it                             | Vault unaware                    | Same hook, no extra setup (agents use git)           |
+| 9  | Developer bypasses with`--no-verify`                                     | —                               | Pre-push hook catches it before it leaves the laptop |
+| 10 | Someone's machine has no ZeroTrace                                         | —                               | CI`zerotrace scan --range` + push protection       |
 
 ## 8. Answering the objection, on stage, in 30 seconds
 
@@ -132,6 +134,7 @@ policy engine, a bounded local AI that never sees the value, and a fix rather th
 > failure."
 
 Follow-up you should be ready for:
+
 - *"Isn't GitHub push protection enough?"* — It fires at push, on partner patterns only, and
   generic secrets were 58% of leaks.³ It also does nothing for PII or for non-GitHub remotes.
 - *"Can't a developer bypass it?"* — Yes, `--no-verify`. That is why we ship a pre-push hook and
