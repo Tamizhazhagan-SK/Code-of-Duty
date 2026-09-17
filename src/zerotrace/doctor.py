@@ -127,10 +127,10 @@ def _check_repo(report: Report) -> None:
     if local and not installer.is_managed(local):
         report.add(OK if runs else FAIL, "repo override",
                    f"local {installer.HOOKS_PATH_KEY}={local} overrides global"
-                   + ("" if runs else ". Not protected: run `zerotrace install --repo`"))
+                   + ("" if runs else ". Not protected: run `zerotrace doctor --fix`"))
     report.add(OK if runs else FAIL, "this repo protected",
                f"yes (hooks: {hooks_dir})" if runs else
-               "no. Run `zerotrace install --global` (or `--repo`)")
+               "no. Run `zerotrace install --global`")
 
 
 def _check_policy(report: Report, cfg: Config) -> None:

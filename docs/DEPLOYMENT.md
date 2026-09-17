@@ -23,8 +23,10 @@ hook name, and each shim chains:
 4. ZeroTrace itself, with the terminal reattached so the fix menu works inside `git commit`.
 
 **Known override:** a repo-local `core.hooksPath` (husky v9 sets `.husky/_`) wins over
-global/system. `zerotrace doctor` flags these repos and `zerotrace install --repo` adds ZeroTrace
-to `.husky/pre-commit`. The server-side backstop (§5) covers anything that slips through.
+global/system. This is a gap in coverage, not an alternative install mode: `zerotrace doctor`
+flags these repos and `zerotrace doctor --fix` patches `.husky/pre-commit` (or the effective
+hooks dir) in place, in addition to - never instead of - the global/system install. The
+server-side backstop (§5) covers anything that slips through regardless.
 
 ## 2. Packaging
 

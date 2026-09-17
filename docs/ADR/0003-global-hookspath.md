@@ -20,8 +20,10 @@ works inside `git commit`; with no terminal it falls back to a headless report.
 - *IDE plugin only*: misses CLI, GUI clients and agents.
 
 **Consequences:**
-- A repo-local `core.hooksPath` (husky) overrides us. `doctor` detects it and `install --repo`
-  handles it.
+- A repo-local `core.hooksPath` (husky) overrides us. `doctor` detects it and `doctor --fix`
+  patches that one repo in addition to, never instead of, the global/system install - there is
+  no supported "install into just this repo" mode, since that would recreate the opt-in gap
+  this ADR exists to close.
 - `pre-commit install` refuses to run while `core.hooksPath` is set, so the shim runs
   `.pre-commit-config.yaml` itself.
 - The hook still depends on the client, so it is advisory. The server-side scan remains the
