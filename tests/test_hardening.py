@@ -91,7 +91,13 @@ def test_writes_cannot_escape_the_repository(repo):
 
     outside = repo.parent / "outside.txt"
     outside.write_text("untouched\n")
-    os.symlink(outside, repo / "link.txt")
+    try:
+        os.symlink(outside, repo / "link.txt")
+    except OSError as exc:
+        # Creating a symlink needs an elevated token or Developer Mode on Windows
+        # (WinError 1314) - a real environment limitation, not a code issue. Skip
+        # honestly rather than pretend the escape-guard was exercised.
+        pytest.skip(f"cannot create symlinks in this environment: {exc}")
     write(repo / "real.txt", "x = 1\n")
     subprocess.run(["git", "add", "-A"], check=True)
 
