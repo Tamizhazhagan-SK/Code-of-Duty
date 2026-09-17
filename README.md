@@ -12,21 +12,38 @@ and any error fails **closed**.
 
 ## Install once, protected everywhere
 
+There is exactly one supported install: global, for every repo on the machine. ZeroTrace does
+not offer a per-repo/opt-in install, because a security control that only some repos have is a
+control that gives a false sense of safety - the one repo nobody protected is the one the leak
+happens in.
+
 ```bash
-pipx install zerotrace            # or: uv tool install zerotrace / pip install -e .
-zerotrace install --global        # sets a global core.hooksPath -> every repo on this machine
-zerotrace doctor                  # verify: hooks, config layers, model endpoint, digest pin
+# macOS / Linux - no pip/pipx/uv required, bootstraps Python itself if missing
+curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
+```
+```powershell
+# Windows - no pip/pipx/uv required, bootstraps Python itself if missing
+iwr https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -useb | iex
+```
+
+Both scripts install ZeroTrace, run `zerotrace install --global` and `zerotrace doctor`
+automatically - one command, nothing left half-configured. If you already have Python tooling:
+
+```bash
+pipx install zerotrace && zerotrace install --global && zerotrace doctor
 ```
 
 That's it. No per-repo `.pre-commit-config.yaml` and no `pre-commit install` in each clone.
 Existing, new and future repos are all covered, including commits made by IDEs, GUI clients
 and **AI coding agents**. Existing repo hooks (husky, git-lfs, commit-msg linters, a company
 hooks dir) keep running because ZeroTrace chains them. `zerotrace uninstall --global` restores
-whatever was there before.
+whatever was there before. A repo whose own local hook config (e.g. husky) would otherwise
+escape the global install is flagged by `zerotrace doctor` and patched in place with
+`zerotrace doctor --fix` - that's a repair of a gap, not a second install mode.
 
 | Command | What it does |
 |---|---|
-| `zerotrace install --global \| --system \| --repo` | user-wide, machine-wide (MDM), or one repo (husky) |
+| `zerotrace install --global` (`--system` for IT/MDM fleets) | the only install: every current and future repo on this machine |
 | `zerotrace run` | what the pre-commit hook runs: staged diff, interactive fix when a TTY exists |
 | `zerotrace review` | fix a headless block (VS Code, GUI) interactively in a terminal |
 | `zerotrace scan --range A..B` / `--all` | CI / PR backstop, onboarding scan (`--format json`) |

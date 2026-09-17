@@ -250,17 +250,13 @@ def init(args) -> int:
 def install_cmd(args) -> int:
     from . import installer
     try:
-        if args.repo:
-            lines = installer.install_repo()
-        else:
-            lines = installer.install("system" if args.system else "global", args.hooks_dir)
+        lines = installer.install("system" if args.system else "global", args.hooks_dir)
     except (PermissionError, gitutil.GitError) as exc:
         print(f"zerotrace: install failed: {exc}", file=sys.stderr)
         return 1
     for line in lines:
         print(f"zerotrace: {line}")
-    if not args.repo:
-        print("zerotrace: every repo on this machine now runs ZeroTrace on commit and push.")
+    print("zerotrace: every repo on this machine now runs ZeroTrace on commit and push.")
     return 0
 
 
@@ -272,6 +268,11 @@ def uninstall_cmd(args) -> int:
 
 
 def doctor_cmd(args) -> int:
+    if args.fix:
+        from . import installer
+        for line in installer.install_repo():
+            print(f"zerotrace: {line}")
+        return 0
     from .doctor import doctor
     return doctor(pin_model=args.pin_model, warm=args.warm)
 
@@ -307,11 +308,10 @@ def _parser() -> argparse.ArgumentParser:
     i = sub.add_parser("init", help="write .zerotrace.yml and a hashed .secrets.baseline")
     i.add_argument("--force", action="store_true")
 
-    ins = sub.add_parser("install", help="protect every repo (global hooksPath) or just this one")
+    ins = sub.add_parser("install", help="protect every repo on this machine (global hooksPath)")
     scope = ins.add_mutually_exclusive_group()
     scope.add_argument("--global", dest="global_", action="store_true", help="current user (default)")
     scope.add_argument("--system", action="store_true", help="all users; for MDM/IT rollout")
-    scope.add_argument("--repo", action="store_true", help="only this repo (husky etc.)")
     ins.add_argument("--hooks-dir", help="custom location for the managed hooks")
 
     un = sub.add_parser("uninstall", help="remove the global/system hooks, restoring the previous hooksPath")
@@ -322,6 +322,8 @@ def _parser() -> argparse.ArgumentParser:
     d = sub.add_parser("doctor", help="check install, config layers and the model endpoint")
     d.add_argument("--pin-model", action="store_true", help="pin the served model digest in .zerotrace.yml")
     d.add_argument("--warm", action="store_true", help="load the model into memory now")
+    d.add_argument("--fix", action="store_true",
+                   help="patch this repo's local hook override (e.g. husky) that defeats the global install")
 
     e = sub.add_parser("eval", help="measure the AI tie-break on labelled synthetic cases")
     e.add_argument("--cases", help="JSONL cases file (default: bundled set)")

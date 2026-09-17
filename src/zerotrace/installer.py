@@ -366,7 +366,9 @@ def uninstall(scope: str = "global") -> list[str]:
 
 
 def install_repo() -> list[str]:
-    """Per-repo install, e.g. for repos whose local core.hooksPath (husky) overrides global."""
+    """Remediation for one repo whose local core.hooksPath (husky etc.) overrides the global
+    install - invoked via `zerotrace doctor --fix`. Not a standalone install path: it patches
+    a pre-existing override, it never substitutes for `zerotrace install --global`."""
     root = gitutil.repo_root()
     local = gitutil.config_get(HOOKS_PATH_KEY, "local")
     if not local and is_managed(gitutil.config_get(HOOKS_PATH_KEY)):
