@@ -9,6 +9,16 @@
    it can reach a log, a prompt, or disk.
 
 ## Dev setup
+This repo is currently private, so clone it with your own git credentials first, then
+either run the bootstrap script or set up manually.
+
+```bash
+git clone https://github.com/Tamizhazhagan-SK/Code-of-Duty.git && cd Code-of-Duty
+./scripts/dev_bootstrap.sh          # macOS/Linux - venv, editable install, hook, doctor, tests
+.\scripts\dev_bootstrap.ps1         # Windows, same steps
+```
+
+Or manually:
 ```bash
 uv sync --extra dev
 pre-commit install
