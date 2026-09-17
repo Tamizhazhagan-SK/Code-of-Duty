@@ -21,6 +21,28 @@ not offer a per-repo/opt-in install, because a security control that only some r
 control that gives a false sense of safety - the one repo nobody protected is the one the leak
 happens in.
 
+**This repo is private today** (org-only access is the plan). Anonymous one-liners against
+`raw.githubusercontent.com` 404 on private/internal repos, so contributors use `git clone`
+instead - it already works with your own git credentials (SSH key or a cached HTTPS token),
+the same way `git pull`/`git push` already do for you:
+
+```bash
+# macOS / Linux
+git clone https://github.com/Tamizhazhagan-SK/Code-of-Duty.git && cd Code-of-Duty && ./scripts/dev_bootstrap.sh
+```
+```powershell
+# Windows
+git clone https://github.com/Tamizhazhagan-SK/Code-of-Duty.git; cd Code-of-Duty; .\scripts\dev_bootstrap.ps1
+```
+
+`scripts/dev_bootstrap.sh`/`.ps1` set up `.venv`, install ZeroTrace in editable dev mode, run
+`zerotrace install --global`, `zerotrace doctor`, and the full test suite, so every contributor
+verifies a checkout the same way. See [CONTRIBUTING.md](CONTRIBUTING.md) for the rest of the
+dev workflow.
+
+Once this repo is public (or org-visible with an auth-aware fetch), the single-command
+installers below work without a manual clone:
+
 ```bash
 # macOS / Linux - no pip/pipx/uv required, bootstraps Python itself if missing
 curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
