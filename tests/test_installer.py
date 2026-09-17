@@ -113,3 +113,73 @@ def test_husky_style_local_hookspath_gets_repo_install(git_env, tmp_path, monkey
     assert ".husky" in line
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     assert _commit(repo).returncode != 0
+
+
+def test_install_sets_template_dir_as_a_fallback(git_env, tmp_path, fake):
+    installer.install("global")
+    template = git("config", "--global", "init.templateDir").stdout.strip()
+    assert installer.is_managed(os.path.join(template, "hooks"))
+
+    # Simulate the scenario the template fallback exists for: core.hooksPath locally cleared.
+    repo_path = tmp_path / "cleared"
+    subprocess.run(["git", "init", "-q", str(repo_path)], check=True)
+    subprocess.run(["git", "-C", str(repo_path), "config", "--unset", "core.hooksPath"],
+                    capture_output=True)  # no-op if repo has none locally; hooksPath is global
+    write(repo_path / "app.py", f'KEY = "{fake.stripe_live()}"\n')
+    subprocess.run(["git", "-C", str(repo_path), "add", "-A"], check=True)
+    assert _commit(repo_path).returncode != 0  # still protected via core.hooksPath
+
+
+def test_uninstall_restores_prior_template_dir(git_env, tmp_path):
+    prev_template = tmp_path / "company-template"
+    prev_hook = prev_template / "hooks" / "commit-msg"
+    marker = tmp_path / "company-template-hook-ran"
+    write(prev_hook, f"#!/bin/sh\necho yes > '{marker}'\n")
+    os.chmod(prev_hook, 0o755)
+    git("config", "--global", "init.templateDir", str(prev_template))
+
+    installer.install("global")
+    assert git("config", "--global", "init.templateDir").stdout.strip() != str(prev_template)
+
+    repo = _new_repo(tmp_path, "templated")
+    write(repo / "ok.py", "x = 1\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    assert _commit(repo).returncode == 0
+    assert marker.exists()  # the previously-configured template hook still ran (chained)
+
+    installer.uninstall("global")
+    assert git("config", "--global", "init.templateDir").stdout.strip() == str(prev_template)
+
+
+def test_install_uninstall_round_trip_is_config_identical(git_env, tmp_path):
+    before = git("config", "--global", "--list").stdout
+    installer.install("global")
+    installer.uninstall("global")
+    after = git("config", "--global", "--list").stdout
+    assert after == before
+
+
+def test_hook_fires_from_a_linked_worktree(git_env, tmp_path, fake):
+    installer.install("global")
+    repo = _new_repo(tmp_path, "main")
+    write(repo / "ok.py", "x = 1\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    assert _commit(repo).returncode == 0
+
+    worktree = tmp_path / "linked-worktree"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-b", "wt", str(worktree)],
+                   check=True, capture_output=True)
+    write(worktree / "app.py", f'KEY = "{fake.stripe_live()}"\n')
+    subprocess.run(["git", "-C", str(worktree), "add", "-A"], check=True)
+    assert _commit(worktree).returncode != 0
+
+
+def test_hook_fires_with_explicit_git_dir_override(git_env, tmp_path, fake):
+    installer.install("global")
+    repo = _new_repo(tmp_path, "explicit-gitdir")
+    write(repo / "app.py", f'KEY = "{fake.stripe_live()}"\n')
+    env = {**os.environ, "GIT_DIR": str(repo / ".git"), "GIT_WORK_TREE": str(repo)}
+    subprocess.run(["git", "add", "-A"], check=True, cwd=str(repo), env=env)
+    result = subprocess.run(["git", "commit", "-qm", "c"], cwd=str(repo), env=env,
+                            capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    assert result.returncode != 0
