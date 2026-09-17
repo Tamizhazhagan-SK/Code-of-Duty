@@ -1,5 +1,9 @@
 # ZeroTrace: Pre-Commit Secret & PII Guardrail
 
+[![CI](https://github.com/Tamizhazhagan-SK/Code-of-Duty/actions/workflows/ci.yml/badge.svg)](https://github.com/Tamizhazhagan-SK/Code-of-Duty/actions/workflows/ci.yml)
+[![License: Apache-2.0](<https://img.shields.io/badge/License-Apache%202.0-blue.svg>)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+
 > Stop sensitive data before it leaves the developer's machine, in **every** repo, with one install.
 
 ZeroTrace is a **local-first** git guardrail. On every commit it inspects *only the lines being
@@ -21,6 +25,7 @@ happens in.
 # macOS / Linux - no pip/pipx/uv required, bootstraps Python itself if missing
 curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
 ```
+
 ```powershell
 # Windows - no pip/pipx/uv required, bootstraps Python itself if missing
 iwr https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -useb | iex
@@ -41,28 +46,28 @@ whatever was there before. A repo whose own local hook config (e.g. husky) would
 escape the global install is flagged by `zerotrace doctor` and patched in place with
 `zerotrace doctor --fix` - that's a repair of a gap, not a second install mode.
 
-| Command | What it does |
-|---|---|
-| `zerotrace install --global` (`--system` for IT/MDM fleets) | the only install: every current and future repo on this machine |
-| `zerotrace run` | what the pre-commit hook runs: staged diff, interactive fix when a TTY exists |
-| `zerotrace review` | fix a headless block (VS Code, GUI) interactively in a terminal |
-| `zerotrace scan --range A..B` / `--all` | CI / PR backstop, onboarding scan (`--format json`) |
-| `zerotrace init` | repo `.zerotrace.yml` + hashed `.secrets.baseline` for pre-existing findings |
-| `zerotrace doctor [--pin-model] [--warm]` | health check, model integrity pin, warm-up |
-| `zerotrace eval` | precision and latency of the AI tie-break on labelled synthetic cases |
+| Command                                                         | What it does                                                                    |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `zerotrace install --global` (`--system` for IT/MDM fleets) | the only install: every current and future repo on this machine                 |
+| `zerotrace run`                                               | what the pre-commit hook runs: staged diff, interactive fix when a TTY exists   |
+| `zerotrace review`                                            | fix a headless block (VS Code, GUI) interactively in a terminal                 |
+| `zerotrace scan --range A..B` / `--all`                     | CI / PR backstop, onboarding scan (`--format json`)                           |
+| `zerotrace init`                                              | repo`.zerotrace.yml` + hashed `.secrets.baseline` for pre-existing findings |
+| `zerotrace doctor [--pin-model] [--warm]`                     | health check, model integrity pin, warm-up                                      |
+| `zerotrace eval`                                              | precision and latency of the AI tie-break on labelled synthetic cases           |
 
 A **pre-push** hook re-scans every outgoing commit, so `git commit --no-verify` is still caught
 before the push. Server-side scanning stays the real enforcement point (see `docs/DEPLOYMENT.md`).
 
 ## What it catches
 
-| Layer | Examples | Default |
-|---|---|---|
-| Provider rule pack (`detectors/rules/default.yml`) | AWS, GitHub, GitLab, OpenAI, Anthropic, Stripe, Slack, Google, GCP SA, Azure keys/SAS, HF, Databricks, npm, Vault, DB connection strings with passwords, JDBC, `Authorization: Bearer` | **BLOCK** |
-| Hardcoded credentials in code | `clientSecret = "…"`, `api_key: str = "…"`, `login(password="…")`, `apiToken := "…"`, `ENV API_TOKEN=…`, HCL, YAML, `.properties`, across Python, JS/TS, Go, Java/Kotlin, C#, Ruby, PHP and Rust | graded by entropy: BLOCK or AI tie-break |
-| Sensitive files | `.env`, `id_rsa`, `*.pem` with a private key, keystores, `terraform.tfstate`, kubeconfig, `.npmrc` tokens, `.git-credentials` | **BLOCK** → [U]nstage + gitignore |
-| detect-secrets | entropy strings, keywords, JWTs, private keys | MEDIUM → AI tie-break |
-| PII | emails (internal domains high), phones, QX-IDs, PAN, Aadhaar (Verhoeff), cards (Luhn), IBAN | WARN/BLOCK → synthetic data |
+| Layer                                                | Examples                                                                                                                                                                                                          | Default                                  |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Provider rule pack (`detectors/rules/default.yml`) | AWS, GitHub, GitLab, OpenAI, Anthropic, Stripe, Slack, Google, GCP SA, Azure keys/SAS, HF, Databricks, npm, Vault, DB connection strings with passwords, JDBC,`Authorization: Bearer`                           | **BLOCK**                          |
+| Hardcoded credentials in code                        | `clientSecret = "…"`, `api_key: str = "…"`, `login(password="…")`, `apiToken := "…"`, `ENV API_TOKEN=…`, HCL, YAML, `.properties`, across Python, JS/TS, Go, Java/Kotlin, C#, Ruby, PHP and Rust | graded by entropy: BLOCK or AI tie-break |
+| Sensitive files                                      | `.env`, `id_rsa`, `*.pem` with a private key, keystores, `terraform.tfstate`, kubeconfig, `.npmrc` tokens, `.git-credentials`                                                                         | **BLOCK** → [U]nstage + gitignore |
+| detect-secrets                                       | entropy strings, keywords, JWTs, private keys                                                                                                                                                                     | MEDIUM → AI tie-break                   |
+| PII                                                  | emails (internal domains high), phones, QX-IDs, PAN, Aadhaar (Verhoeff), cards (Luhn), IBAN                                                                                                                       | WARN/BLOCK → synthetic data             |
 
 Placeholders (`${VAR}`, `<your-key>`, `changeme`, `os.environ[...]`, AWS doc examples),
 lockfile hashes and UUIDs are filtered before any decision.
@@ -86,6 +91,7 @@ pwsh -File .\demo\run_demo.ps1                        # Windows
 
 Both scripts run the same scenes against sandboxed throwaway repos. Your real git config is
 never touched.
+
 1. One global install protects two unrelated repos.
 2. Hardcoded secrets in Python/Docker/Terraform/.env plus PII fixtures are fixed interactively
    *inside* `git commit`.
@@ -107,7 +113,7 @@ never touched.
 ZeroTrace is a **helpful guardrail, not a security boundary**: pair it with server-side push
 protection and credential rotation.
 
-## License / IP
+## License
 
-See `LICENSE` and the IP note in `CONTRIBUTING.md`. If this originated in a company hackathon,
-confirm ownership before open-sourcing.
+Apache-2.0, see [LICENSE](LICENSE). Contributions are accepted under the same terms
+(see [CONTRIBUTING.md](CONTRIBUTING.md)).
