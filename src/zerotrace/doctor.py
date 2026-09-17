@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__, gitutil, installer
+from . import __version__, gitutil, installer, platform_env
 from .config import Config, load_config
 
 OK, WARN, FAIL = "[green]✓[/]", "[yellow]![/]", "[red]✗[/]"
@@ -62,6 +62,25 @@ def _check_toolchain(report: Report) -> None:
     report.add(OK if version else FAIL, "git", version or "git not found")
 
 
+def _check_environment(report: Report) -> None:
+    env = platform_env.detect()
+    if env.kind == "wsl":
+        label = f"WSL{env.wsl_version or '?'}" + (f" ({env.distro_name})" if env.distro_name else "")
+        report.add(OK, "environment", label)
+        if not env.interop_available:
+            report.add(WARN, "WSL interop",
+                       "disabled for this distro; the Windows side must be installed "
+                       "separately (run `zerotrace install --global` there too)")
+        if gitutil.in_repo():
+            fs_class = platform_env.classify_path(gitutil.repo_root())
+            if fs_class == "drvfs":
+                report.add(WARN, "repo filesystem",
+                           "this repo is on a Windows drive (/mnt/<drive>); performance and "
+                           "hook install may be degraded. Consider cloning under $HOME instead")
+    else:
+        report.add(OK, "environment", env.kind)
+
+
 def _check_install(report: Report) -> None:
     for scope in ("system", "global"):
         value = gitutil.config_get(installer.HOOKS_PATH_KEY, scope)
@@ -70,6 +89,14 @@ def _check_install(report: Report) -> None:
             continue
         managed = installer.is_managed(value)
         report.add(OK if managed else WARN, f"{scope} hooksPath",
+                   f"{value} ({'ZeroTrace-managed' if managed else 'not ZeroTrace'})")
+
+    for scope in ("system", "global"):
+        value = gitutil.config_get(installer.TEMPLATE_DIR_KEY, scope)
+        if not value:
+            continue  # optional fallback; absent is fine as long as hooksPath is set
+        managed = installer.is_managed(os.path.join(value, "hooks"))
+        report.add(OK if managed else WARN, f"{scope} templateDir (fallback)",
                    f"{value} ({'ZeroTrace-managed' if managed else 'not ZeroTrace'})")
 
 
@@ -86,6 +113,12 @@ def _repo_runs_zerotrace(hooks_dir: str) -> bool:
 def _check_repo(report: Report) -> None:
     if not gitutil.in_repo():
         report.add(OK, "repo", "not inside a git repo (repo checks skipped)")
+        return
+    dubious = gitutil.git_stderr("status")
+    if "dubious ownership" in dubious.lower():
+        report.add(FAIL, "repo ownership",
+                   "git refuses this repo (root-owned repo, network share, or `sudo`): run "
+                   "`git config --global --add safe.directory <path>` or the hook will never run")
         return
     os.chdir(gitutil.repo_root())
     hooks_dir = installer.effective_hooks_dir()
@@ -169,6 +202,7 @@ def _check_model(report: Report, cfg: Config, pin_model: bool, warm: bool) -> No
 def doctor(pin_model: bool = False, warm: bool = False) -> int:
     report = Report()
     _check_toolchain(report)
+    _check_environment(report)
     _check_install(report)
     _check_repo(report)
     cfg = load_config()

@@ -58,6 +58,13 @@ def git(*args: str, input_bytes: bytes | None = None, check: bool = True) -> str
     return result.stdout.decode("utf-8", "replace")
 
 
+def git_stderr(*args: str) -> str:
+    """stderr text of a git command, regardless of exit code. For diagnostics only (e.g.
+    detecting "dubious ownership"), never for output a decision depends on."""
+    result = subprocess.run(["git", *args], capture_output=True)
+    return result.stderr.decode("utf-8", "replace")
+
+
 def git_bytes(*args: str, check: bool = True) -> bytes | None:
     result = subprocess.run(["git", *args], capture_output=True)
     if result.returncode != 0:
