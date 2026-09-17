@@ -92,7 +92,27 @@ Agents commit through git, so the global hook covers them automatically. The `sk
 directory packages ZeroTrace as an Agent Skill (scan, explain, propose, never auto-apply) for
 Claude Code style marketplaces.
 
-## 7. Governance and metrics (roadmap)
+## 7. WSL
+
+Git for Windows and each WSL distro are **separate git installs with separate global
+config** — a Windows-side `zerotrace install --global` protects nothing inside WSL, and
+vice versa. `zerotrace doctor` detects which side it's running on (Windows, WSL1, WSL2,
+plus the distro name and whether interop is enabled) and reports it, and it warns if the
+current repo lives on a Windows drive mounted into WSL (`/mnt/<drive>`), since the exec
+bit and line endings a hook needs don't reliably survive there; `zerotrace install`
+refuses to write hook scripts onto such a path rather than produce a broken hook that
+fails only at commit time.
+
+**Today this means:** run `zerotrace install --global` once in Windows and once in each
+WSL distro that will commit. **Not yet built:** a single Windows-side command that
+enumerates and bootstraps every registered distro, and a mechanism (a scheduled task is
+the current plan) to catch a distro created *after* that command ran — until then, a new
+`wsl --install -d <name>` distro is unprotected until someone runs `zerotrace install`
+inside it. A WSL-side hook is never allowed to shell out to the Windows binary through
+interop (or vice versa): interop can be disabled per-distro or by fleet policy, and a hook
+that depends on it becomes a silent, hard-to-diagnose no-op.
+
+## 8. Governance and metrics (roadmap)
 
 - Commit exceptions as a reviewed file (fingerprints only) so they go through PR review.
 - Opt-in fleet telemetry: counts of blocked/fixed findings by rule, never values, for a

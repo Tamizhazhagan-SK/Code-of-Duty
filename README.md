@@ -79,8 +79,9 @@ never touched.
 
 ## Docs
 
+- `docs/INSTALL.md`: supported OS/distro versions (verified, dated) and per-platform install notes
 - `docs/ARCHITECTURE.md`: pipeline and module map
-- `docs/DEPLOYMENT.md`: rolling out to every developer (MDM, org policy, CI backstop, agents)
+- `docs/DEPLOYMENT.md`: rolling out to every developer (MDM, org policy, CI backstop, agents, WSL)
 - `docs/AI_CLASSIFIER.md` · `docs/AWS_INFERENCE.md`: the model, redaction, and moving inference to AWS
 - `docs/THREAT_MODEL.md` · `SECURITY.md` · `docs/POLICY.md` · `docs/ADR/`
 - `docs/POSITIONING.md`: prior art and what is actually new here

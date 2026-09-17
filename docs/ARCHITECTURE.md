@@ -29,6 +29,9 @@ git push ─► pre-push shim ─► zerotrace pre-push   (every outgoing commit
 
 ## Module map
 - `installer.py`: global/system/repo install, hook shims, chaining, uninstall/restore.
+- `platform_env.py`: detects Windows/macOS/Linux/WSL1/WSL2 and classifies a repo path as
+  native, DrvFs (`/mnt/<drive>`) or a `\\wsl$\` UNC path; `installer.py` and `doctor.py` both
+  call it so they never disagree about where they're running.
 - `config.py`: layered config (defaults ← org ← user ← repo) with org-locked keys.
 - `collectors/`: diff → `Unit(path, file_class, line_no, text, window, rev)` + `Changeset`.
 - `detectors/`: each returns `Finding(rule_id, kind, severity, confidence, …)`. Detectors
