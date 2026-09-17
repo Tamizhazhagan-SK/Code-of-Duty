@@ -247,6 +247,8 @@ def _checked_hooks_dir(hooks_dir: str) -> str:
             f"{resolved} is on a Windows drive mounted into WSL (/mnt/<drive>); the exec bit "
             "and line endings it needs won't survive there. Use a path under $HOME instead, "
             "e.g. --hooks-dir ~/.zerotrace/hooks.")
+    if os.path.exists(resolved) and not os.path.isdir(resolved):
+        raise PermissionError(f"{resolved} exists and is not a directory")
     if os.path.isdir(resolved) and not is_managed(resolved):
         unexpected = sorted(set(os.listdir(resolved)) - set(HOOK_NAMES) - {MARKER})
         if unexpected:
@@ -254,8 +256,6 @@ def _checked_hooks_dir(hooks_dir: str) -> str:
                 f"{resolved} already contains {', '.join(unexpected[:3])}"
                 f"{'…' if len(unexpected) > 3 else ''}; refusing to write hook scripts there. "
                 "Point --hooks-dir at a dedicated directory.")
-    elif os.path.exists(resolved):
-        raise PermissionError(f"{resolved} exists and is not a directory")
     return resolved
 
 

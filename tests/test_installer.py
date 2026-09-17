@@ -91,6 +91,12 @@ def test_uninstall_unsets_when_nothing_before(git_env):
     assert git("config", "--global", "core.hooksPath").returncode != 0
 
 
+def test_install_twice_is_idempotent(git_env):
+    installer.install("global")
+    lines = installer.install("global")  # re-running against an already-managed dir must not error
+    assert any("wrote" in line for line in lines)
+
+
 def test_husky_style_local_hookspath_gets_repo_install(git_env, tmp_path, monkeypatch, fake):
     installer.install("global")
     repo = _new_repo(tmp_path, "husky")
