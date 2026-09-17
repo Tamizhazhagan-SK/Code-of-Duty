@@ -24,7 +24,9 @@ uv run pytest
 - CI must pass: lint, type-check, tests, and the **egress-deny** and
   **no-plaintext-secret-in-artifacts** gates.
 
-## IP & Licensing
-Confirm who owns this code before adding a license or publishing. If it started as
-a company hackathon project, the employer likely owns it; get written sign-off
-before open-sourcing or publishing to any public marketplace.
+## License
+ZeroTrace is licensed under [Apache-2.0](LICENSE). By submitting a contribution
+you agree it is licensed under the same terms (see `LICENSE` section 5).
+
+## Code of Conduct
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).

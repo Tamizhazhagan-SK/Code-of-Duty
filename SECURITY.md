@@ -5,7 +5,8 @@ optionally invoke a local model. It is a piece of security-critical tooling,
 so its own supply chain matters as much as what it detects.
 
 ## Reporting a vulnerability
-Email security@<org>.example with details. Do **not** open a public issue for
+Use GitHub's private vulnerability reporting: open the **Security** tab on this
+repository -> **Report a vulnerability**. Do **not** open a public issue for
 anything exploitable. We aim to acknowledge within 3 business days.
 
 ## Guarantees this tool tries to keep
