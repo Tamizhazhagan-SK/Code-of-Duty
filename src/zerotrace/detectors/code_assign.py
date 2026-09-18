@@ -98,9 +98,23 @@ _CATEGORY_EXPLAIN = {
     "generic": "A high-entropy value is bound to a credential-like name.",
 }
 
+# Cyrillic/Greek letters that render identically to a Latin letter, used to smuggle a
+# credential-like identifier (e.g. "p\u0430ssword") past the ASCII keyword vocabulary below.
+_CONFUSABLES = str.maketrans({
+    "\u0430": "a", "\u0410": "A", "\u0435": "e", "\u0415": "E", "\u043e": "o", "\u041e": "O",
+    "\u0440": "p", "\u0420": "P", "\u0441": "c", "\u0421": "C", "\u0443": "y", "\u0423": "Y",
+    "\u0445": "x", "\u0425": "X", "\u043a": "k", "\u041a": "K", "\u043c": "m", "\u041c": "M",
+    "\u043d": "h", "\u041d": "H", "\u0442": "t", "\u0422": "T", "\u0432": "b", "\u0412": "B",
+    "\u03bf": "o", "\u039f": "O", "\u03b1": "a", "\u0391": "A",
+})
+
+
+def _deconfuse(ident: str) -> str:
+    return ident.translate(_CONFUSABLES)
+
 
 def words_of(ident: str) -> list[str]:
-    ident = ident.lstrip("$@")
+    ident = _deconfuse(ident).lstrip("$@")
     s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", ident)
     s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", s)
     return [w.lower() for w in re.split(r"[\s_.\-]+", s) if w]
