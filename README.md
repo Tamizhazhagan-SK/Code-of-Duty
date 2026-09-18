@@ -58,6 +58,27 @@ curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/
 iwr https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -useb | iex
 ```
 
+### Uninstall (one line)
+
+The same script removes everything it installed: the git hooks first, then the package, the
+PATH entry and `~/.zerotrace`. Your repos, their history and their files are untouched.
+
+```bash
+# macOS / Linux - from a clone, or piped
+./install.sh --uninstall
+curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash -s -- --uninstall
+```
+
+```powershell
+# Windows - from a clone, or piped
+pwsh -File .\install.ps1 -Uninstall
+&([scriptblock]::Create((iwr https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -useb))) -Uninstall
+```
+
+Install and uninstall repeatedly to check a machine: `zerotrace doctor` reports whether this
+repo is actually protected, and `zerotrace ui` renders every screen so you can confirm the
+terminal you demo from shows them correctly.
+
 Both scripts install ZeroTrace, run `zerotrace install --global` and `zerotrace doctor`
 automatically - one command, nothing left half-configured. If you already have Python tooling:
 
@@ -82,6 +103,8 @@ escape the global install is flagged by `zerotrace doctor` and patched in place 
 | `zerotrace init`                                              | repo`.zerotrace.yml` + hashed `.secrets.baseline` for pre-existing findings |
 | `zerotrace doctor [--pin-model] [--warm]`                     | health check, model integrity pin, warm-up                                      |
 | `zerotrace eval`                                              | precision and latency of the AI tie-break on labelled synthetic cases           |
+| `zerotrace ui [--tier auto\|unicode\|ascii\|text\|all]`        | render every screen to check a terminal (CMD, PowerShell, Windows Terminal, IDEs) |
+| `zerotrace gateway`                                           | sanitize an AI-agent / MCP-tool / RAG payload read from stdin                   |
 
 A **pre-push** hook re-scans every outgoing commit, so `git commit --no-verify` is still caught
 before the push. Server-side scanning stays the real enforcement point (see `docs/DEPLOYMENT.md`).

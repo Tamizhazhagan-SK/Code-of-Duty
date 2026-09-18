@@ -64,3 +64,47 @@ Treated as its own install target, not as Windows: Git for Windows and each WSL
 distro run separate git installs with separate global config, so `zerotrace install`
 must be run once **in each environment** that will commit. See
 `docs/DEPLOYMENT.md` for the detection and bootstrap design.
+
+## Uninstall
+
+The installer removes what it installed, in the order that keeps a machine consistent: git
+hooks first (so no repo points at a binary that is about to vanish), then the package, the
+PATH entry and `~/.zerotrace`. Repos, history and files are never touched.
+
+```bash
+./install.sh --uninstall            # macOS / Linux (also: curl … | bash -s -- --uninstall)
+pwsh -File .\install.ps1 -Uninstall # Windows
+```
+
+Re-installing is the same one line as a first install, so install/uninstall cycles are a
+reasonable way to test a machine. After each cycle:
+
+```bash
+zerotrace doctor      # is this repo actually protected? which hooks path won?
+git config --global core.hooksPath   # empty after an uninstall
+```
+
+## Checking the terminal you will demo from
+
+Consoles differ in what they can draw. `zerotrace ui` renders every screen — logo, findings
+report, fix preview, progress bar, panels and status glyphs — through the same code paths the
+real commands use:
+
+```bash
+zerotrace ui                 # auto-detect this console
+zerotrace ui --tier ascii    # what a legacy cmd.exe / cp437 console sees
+zerotrace ui --tier all      # every tier in one pass
+```
+
+What ZeroTrace does automatically:
+
+| Console | Behaviour |
+|---|---|
+| Windows Terminal, iTerm2, GNOME Terminal, VS Code, JetBrains | shaded Unicode mark, colour, rounded box borders |
+| Kitty, WezTerm, iTerm2 | inline PNG logo via the terminal's image protocol |
+| legacy `cmd.exe`, PowerShell 5.1 (cp437/cp1252) | ASCII mark, ASCII box borders, `+`/`x` instead of `✓`/`✗` |
+| redirected output, CI logs, `NO_COLOR` | no colour, no image escapes, no in-place redraw |
+| narrow terminals (< 60 columns) | smaller mark, then wordmark only |
+
+If something still looks wrong, `zerotrace ui` prints the detected capabilities (encoding,
+colour system, size, relevant environment variables) — include that output in a bug report.

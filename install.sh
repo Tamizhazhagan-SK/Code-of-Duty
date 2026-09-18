@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # ZeroTrace one-command bootstrap installer for macOS and Linux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
+#   install:    curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
+#   uninstall:  curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash -s -- --uninstall
+#   (from a clone: ./install.sh   /   ./install.sh --uninstall)
 #
 # Does NOT assume pip, pipx, uv or any Python packaging tool is already
 # installed. The only hard prerequisite is git (ZeroTrace is a git hook
@@ -16,8 +18,10 @@ EXTRAS="${ZEROTRACE_EXTRAS:-}"   # e.g. "llm,pii-ner" - passed through to pip's 
 PY_MIN_MAJOR=3
 PY_MIN_MINOR=11
 
+UNINSTALL=0
 for arg in "$@"; do
   case "$arg" in
+    --uninstall|--remove) UNINSTALL=1 ;;
     --with-llm) EXTRAS="${EXTRAS:+$EXTRAS,}llm" ;;
     --with-pii) EXTRAS="${EXTRAS:+$EXTRAS,}pii-ner" ;;
     --ref=*) REF="${arg#--ref=}" ;;
@@ -28,6 +32,43 @@ done
 info() { printf '\033[1;34m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$1" >&2; }
 die()  { printf '\033[1;31mERROR\033[0m %s\n' "$1" >&2; exit 1; }
+
+# Remove everything this script installs: git hooks first (so no repo is left pointing at a
+# binary that is about to disappear), then the package, then the PATH lines and state dir.
+do_uninstall() {
+  local python bin_dir zerotrace_bin
+  python="$(find_python || true)"
+  [ -n "$python" ] || die "no Python found; nothing to uninstall (or remove ~/.zerotrace by hand)."
+
+  zerotrace_bin="$(command -v zerotrace || true)"
+  if [ -z "$zerotrace_bin" ]; then
+    bin_dir="$("$python" -m site --user-base 2>/dev/null)/bin"
+    [ -x "$bin_dir/zerotrace" ] && zerotrace_bin="$bin_dir/zerotrace"
+  fi
+
+  if [ -n "$zerotrace_bin" ]; then
+    info "Removing the global git hook..."
+    "$zerotrace_bin" uninstall --global || warn "uninstall --global reported an issue."
+  else
+    warn "zerotrace binary not found; skipping hook removal. Check 'git config --global core.hooksPath'."
+  fi
+
+  info "Uninstalling the package..."
+  "$python" -m pip uninstall --yes --quiet zerotrace >/dev/null 2>&1 || warn "pip uninstall reported an issue."
+
+  local marker="# added by ZeroTrace installer"
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+    [ -f "$rc" ] && grep -qF "$marker" "$rc" 2>/dev/null || continue
+    info "Removing the PATH entry from $rc..."
+    # Delete the marker line plus the export line that follows it.
+    sed -i.zerotrace-bak "/$(printf '%s' "$marker" | sed 's/[][\/.*^$]/\\&/g')/,+1d" "$rc"
+    rm -f "$rc.zerotrace-bak"
+  done
+
+  [ -d "$HOME/.zerotrace" ] && { info "Removing $HOME/.zerotrace..."; rm -rf "$HOME/.zerotrace"; }
+  info "Uninstalled. Repos keep their history and files; only the hooks and the tool are gone."
+  exit 0
+}
 
 os_name() {
   case "$(uname -s)" in
@@ -91,6 +132,9 @@ OS="$(os_name)"
 [ "$OS" = "unknown" ] && die "Unsupported OS: $(uname -s). See docs/INSTALL.md."
 
 command -v git >/dev/null 2>&1 || die "git is required (ZeroTrace protects git repos) - install it first."
+
+# Uninstalling must never trigger a Python *install*: do it before the bootstrap below.
+[ "$UNINSTALL" = 1 ] && do_uninstall
 
 PYTHON="$(find_python || true)"
 if [ -z "$PYTHON" ]; then

@@ -13,7 +13,7 @@ from .audit.fingerprint import of_finding
 from .collectors import staged_diff
 from .config import load_config
 
-COMMANDS = ("run", "review", "scan", "pre-push", "init", "install", "uninstall", "doctor",
+COMMANDS = ("run", "review", "scan", "pre-push", "init", "install", "uninstall", "doctor", "ui",
             "eval", "gateway", "version")
 _MAX_PUSH_COMMITS = 300
 _SHA_RE = re.compile(r"\A[0-9a-f]{40,64}\Z")
@@ -43,7 +43,11 @@ def _blocking(decisions) -> list:
 
 def _ok_line(changeset, started: float) -> None:
     ms = (time.monotonic() - started) * 1000
-    print(f"zerotrace: ✓ {len(changeset.units)} added lines in {len(changeset.paths)} files, "
+    from rich.console import Console as _Console
+
+    from .ui.glyphs import for_console
+    tick = for_console(_Console())["ok"]
+    print(f"zerotrace: {tick} {len(changeset.units)} added lines in {len(changeset.paths)} files, "
           f"no blocking findings ({ms:.0f} ms)")
 
 
@@ -284,6 +288,11 @@ def doctor_cmd(args) -> int:
     return doctor(pin_model=args.pin_model, warm=args.warm)
 
 
+def ui_cmd(args) -> int:
+    from .ui.preview import run
+    return run(args.tier)
+
+
 def eval_cmd(args) -> int:
     from .evals import run_eval
     return run_eval(args.cases, args.model or [], args.runs)
@@ -346,6 +355,10 @@ def _parser() -> argparse.ArgumentParser:
     d.add_argument("--fix", action="store_true",
                    help="patch this repo's local hook override (e.g. husky) that defeats the global install")
 
+    u = sub.add_parser("ui", help="render every screen so you can check this terminal")
+    u.add_argument("--tier", choices=["auto", "unicode", "ascii", "text", "all"], default="auto",
+                   help="force a logo/render tier (default: auto-detect)")
+
     e = sub.add_parser("eval", help="measure the AI tie-break on labelled synthetic cases")
     e.add_argument("--cases", help="JSONL cases file (default: bundled set)")
     e.add_argument("--model", action="append", help="model name(s) to compare")
@@ -383,7 +396,7 @@ def main(argv: list[str] | None = None) -> None:
 
     handlers = {
         "run": run, "review": review, "scan": scan, "pre-push": pre_push, "init": init,
-        "install": install_cmd, "uninstall": uninstall_cmd, "doctor": doctor_cmd,
+        "install": install_cmd, "uninstall": uninstall_cmd, "doctor": doctor_cmd, "ui": ui_cmd,
         "eval": eval_cmd, "gateway": gateway_cmd,
     }
     try:

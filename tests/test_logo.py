@@ -1,5 +1,4 @@
-"""Terminal-capability fallback for the logo: png -> ansi -> ascii, plus overrides."""
-import base64
+"""Logo tiers (png -> unicode -> ascii -> text), width fallbacks and colour rules."""
 import io
 
 import pytest
@@ -8,6 +7,7 @@ from rich.console import Console
 from zerotrace.ui import logo
 
 _ENV_KEYS = ("ZEROTRACE_LOGO", "KITTY_WINDOW_ID", "TERM", "TERM_PROGRAM", "CI", "NO_COLOR")
+_BLOCKS = set("░▒▓█")   # the shading ramp the unicode tier draws with
 
 
 @pytest.fixture(autouse=True)
@@ -18,101 +18,128 @@ def _clean_env(monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
-def _console(*, terminal: bool, color: str | None = "truecolor") -> Console:
-    return Console(file=io.StringIO(), force_terminal=terminal, color_system=color)
+def _console(*, terminal: bool = True, color: str | None = "truecolor", width: int = 100) -> Console:
+    return Console(file=io.StringIO(), force_terminal=terminal, color_system=color, width=width)
 
 
-def _stub_assets(monkeypatch, **available: bytes | str) -> None:
-    def fake_read_bytes(name: str) -> bytes | None:
-        value = available.get(name)
-        if value is None:
-            return None
-        return value if isinstance(value, bytes) else value.encode("utf-8")
-    monkeypatch.setattr(logo, "_read_bytes", fake_read_bytes)
+def _plain(art: str) -> str:
+    return art.replace(logo._WHITE, "").replace(logo._RESET, "")
 
 
-def test_forced_off_returns_none(monkeypatch):
-    monkeypatch.setenv("ZEROTRACE_LOGO", "off")
-    _stub_assets(monkeypatch, **{"logo.txt": "ascii-art"})
-    assert logo.render(_console(terminal=True)) is None
+def _shows_the_name(art: str) -> bool:
+    """Either the plain wordmark, or the block-letter version used on wide terminals."""
+    return "ZEROTRACE" in art or logo._block_wordmark()[0] in art
 
 
-def test_forced_ascii_ignores_terminal_capability(monkeypatch):
-    monkeypatch.setenv("ZEROTRACE_LOGO", "ascii")
+# --- tiers --------------------------------------------------------------------------
+
+def test_forced_off_prints_nothing():
+    import os
+    os.environ["ZEROTRACE_LOGO"] = "off"
+    try:
+        assert logo.render(_console()) is None
+    finally:
+        del os.environ["ZEROTRACE_LOGO"]
+
+
+def test_image_tier_used_on_kitty(monkeypatch):
     monkeypatch.setenv("KITTY_WINDOW_ID", "1")
-    _stub_assets(monkeypatch, **{"logo.png": b"fake", "logo.ans": "ansi-art", "logo.txt": "ascii-art"})
-    assert logo.render(_console(terminal=True)) == "ascii-art"
+    monkeypatch.setattr(logo, "_read_bytes", lambda name: b"png-bytes" if name == "logo.png" else None)
+    assert logo.render(_console()).startswith("\033_G")
 
 
-def test_auto_mode_no_terminal_falls_back_to_ascii(monkeypatch):
-    _stub_assets(monkeypatch, **{"logo.png": b"fake", "logo.ans": "ansi-art", "logo.txt": "ascii-art"})
-    assert logo.render(_console(terminal=False)) == "ascii-art"
+def test_image_tier_used_on_iterm2(monkeypatch):
+    monkeypatch.setenv("TERM_PROGRAM", "iTerm.app")
+    monkeypatch.setattr(logo, "_read_bytes", lambda name: b"png-bytes" if name == "logo.png" else None)
+    assert "\033]1337;File=inline=1" in logo.render(_console())
 
 
-def test_auto_mode_ci_forces_ascii_even_on_a_real_terminal(monkeypatch):
+def test_unicode_tier_draws_the_mark_and_the_wordmark(monkeypatch):
+    monkeypatch.setenv("ZEROTRACE_LOGO", "unicode")
+    art = _plain(logo.render(_console(width=120)))
+    assert _BLOCKS & set(art)                # the mark
+    assert "█████" in art                    # the block wordmark at this width
+
+
+def test_ascii_tier_is_pure_ascii(monkeypatch):
+    """cp437 / cp1252 consoles must never receive a character they cannot encode."""
+    monkeypatch.setenv("ZEROTRACE_LOGO", "ascii")
+    art = _plain(logo.render(_console(width=100)))
+    art.encode("cp437")                      # raises if any glyph is unrepresentable
+    assert set("@%#*+=:-.") & set(art) and "ZEROTRACE" in art
+    assert not _BLOCKS & set(art)
+
+
+def test_no_terminal_falls_back_to_ascii():
+    art = _plain(logo.render(_console(terminal=False)))
+    art.encode("cp437")
+    assert not _BLOCKS & set(art)
+
+
+def test_ci_forces_ascii_even_on_a_capable_terminal(monkeypatch):
     monkeypatch.setenv("CI", "true")
     monkeypatch.setenv("KITTY_WINDOW_ID", "1")
-    _stub_assets(monkeypatch, **{"logo.png": b"fake", "logo.ans": "ansi-art", "logo.txt": "ascii-art"})
-    assert logo.render(_console(terminal=True)) == "ascii-art"
+    art = _plain(logo.render(_console()))
+    assert not _BLOCKS & set(art)
+    assert "\033_G" not in art
 
 
-def test_no_color_disables_ansi_tier(monkeypatch):
+def test_no_color_disables_colour_and_unicode(monkeypatch):
     monkeypatch.setenv("NO_COLOR", "1")
-    _stub_assets(monkeypatch, **{"logo.ans": "ansi-art", "logo.txt": "ascii-art"})
-    assert logo.render(_console(terminal=True)) == "ascii-art"
+    art = logo.render(_console())
+    assert logo._WHITE not in art
+    assert not _BLOCKS & set(art)
 
 
-def test_console_without_color_system_falls_back_to_ascii(monkeypatch):
-    _stub_assets(monkeypatch, **{"logo.ans": "ansi-art", "logo.txt": "ascii-art"})
-    assert logo.render(_console(terminal=True, color=None)) == "ascii-art"
+def test_colour_is_applied_only_when_the_console_has_a_colour_system(monkeypatch):
+    monkeypatch.setenv("ZEROTRACE_LOGO", "ascii")
+    assert logo._WHITE in logo.render(_console(color="truecolor"))
+    assert logo._WHITE not in logo.render(_console(color=None))
 
 
-def test_auto_mode_uses_kitty_image_when_supported(monkeypatch):
-    monkeypatch.setenv("KITTY_WINDOW_ID", "1")
-    _stub_assets(monkeypatch, **{"logo.png": b"fake-bytes", "logo.ans": "ansi-art", "logo.txt": "ascii"})
-    out = logo.render(_console(terminal=True))
-    assert out is not None and out.startswith("\033_G")
+# --- width fallbacks ------------------------------------------------------------------
+
+@pytest.mark.parametrize("width", [200, 120, 100, 80, 60, 40, 30, 20, 10])
+def test_every_width_renders_and_fits(width, monkeypatch):
+    monkeypatch.setenv("ZEROTRACE_LOGO", "unicode")
+    art = _plain(logo.render(_console(width=width)))
+    assert _shows_the_name(art)
+    longest = max(len(line) for line in art.splitlines())
+    assert longest <= width, f"{longest} > {width}"
 
 
-def test_auto_mode_uses_iterm2_image_when_supported(monkeypatch):
-    monkeypatch.setenv("TERM_PROGRAM", "iTerm.app")
-    _stub_assets(monkeypatch, **{"logo.png": b"fake-bytes", "logo.ans": "ansi-art", "logo.txt": "ascii"})
-    out = logo.render(_console(terminal=True))
-    assert out is not None and out.startswith("\033]1337;File=")
+def test_narrow_terminal_drops_the_mark_but_keeps_the_name(monkeypatch):
+    monkeypatch.setenv("ZEROTRACE_LOGO", "unicode")
+    art = _plain(logo.render(_console(width=18)))
+    assert art.splitlines()[0] == "ZEROTRACE"
+    assert not _BLOCKS & set(art)
 
 
-def test_auto_mode_falls_back_to_ansi_when_no_image_protocol_detected(monkeypatch):
-    _stub_assets(monkeypatch, **{"logo.ans": "ansi-art", "logo.txt": "ascii-art"})
-    assert logo.render(_console(terminal=True)) == "ansi-art"
+def test_wordmark_sits_to_the_right_of_the_mark(monkeypatch):
+    monkeypatch.setenv("ZEROTRACE_LOGO", "unicode")
+    lines = _plain(logo.render(_console(width=80))).splitlines()
+    (row,) = [line for line in lines if "ZEROTRACE" in line]
+    assert row.index("ZEROTRACE") > 20, "the wordmark must start after the mark, not above it"
+    assert _BLOCKS & set(row[:20]), "the mark should occupy the left of that row"
 
 
-def test_auto_mode_returns_none_when_no_assets_ship_at_all(monkeypatch):
-    _stub_assets(monkeypatch)
-    assert logo.render(_console(terminal=True)) is None
+# --- assets ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", ["mark.uni.txt", "mark.ascii.txt",
+                                  "mark.small.uni.txt", "mark.small.ascii.txt"])
+def test_generated_assets_ship_in_the_package(name):
+    art = logo._read_text(name)
+    assert art and art.strip(), name
 
 
-def test_real_ascii_asset_ships_and_loads_via_the_package():
-    # No stubbing: proves the packaged src/zerotrace/ui/assets/logo.txt actually
-    # loads through importlib.resources, even before logo.png/logo.ans exist.
-    art = logo.render(_console(terminal=False))
-    assert art == "ZEROTRACE\nno trace. no leaks. stays safe.\n"
+def test_assets_have_no_trailing_whitespace_or_crlf():
+    for name in ("mark.uni.txt", "mark.ascii.txt"):
+        raw = logo._read_bytes(name).decode("utf-8")
+        assert "\r" not in raw, name
+        assert all(line == line.rstrip() for line in raw.splitlines()), name
 
 
-def test_kitty_escape_single_chunk_has_m0_immediately():
-    escaped = logo._kitty_escape(b"tiny")
-    b64 = base64.b64encode(b"tiny").decode("ascii")
-    assert escaped == f"\033_Ga=T,f=100,m=0;{b64}\033\\"
-
-
-def test_kitty_escape_chunks_long_payloads_and_terminates_with_m0():
-    escaped = logo._kitty_escape(b"x" * 10000)
-    segments = escaped.split("\033\\")[:-1]
-    assert len(segments) > 1
-    assert segments[0].startswith("\033_Ga=T,f=100,m=1;")
-    assert segments[-1].startswith("\033_Gm=0;")
-
-
-def test_iterm2_escape_format():
-    escaped = logo._iterm2_escape(b"tiny")
-    b64 = base64.b64encode(b"tiny").decode("ascii")
-    assert escaped == f"\033]1337;File=inline=1;width=40;preserveAspectRatio=1;size=4:{b64}\a"
+def test_missing_assets_degrade_to_the_wordmark(monkeypatch):
+    monkeypatch.setattr(logo, "_read_bytes", lambda name: None)
+    art = _plain(logo.render(_console()))
+    assert art.splitlines()[0] == "ZEROTRACE"

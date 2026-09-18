@@ -13,9 +13,13 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__, gitutil, installer, platform_env
+from .ui import glyphs
 from .config import Config, load_config
 
-OK, WARN, FAIL = "[green]✓[/]", "[yellow]![/]", "[red]✗[/]"
+# Status keys, not glyphs: Report.table() renders whatever the destination console can
+# encode (a legacy cp437 console gets "+"/"x" instead of "✓"/"✗", not "?").
+OK, WARN, FAIL = "ok", "warn", "fail"
+_STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red"}
 _MODEL_INTEGRITY = "model integrity"
 _MODEL_AVAILABLE = "model available"
 
@@ -29,13 +33,17 @@ class Report:
         self.rows.append((status, check, result))
         self.failures += status == FAIL
 
-    def table(self) -> Table:
-        table = Table(title=f"ZeroTrace doctor · v{__version__}", show_header=False, expand=False)
+    def table(self, console: Console | None = None) -> Table:
+        marks = glyphs.for_console(console or Console())
+        title = glyphs.sanitize(f"ZeroTrace doctor · v{__version__}", console or Console())
+        table = Table(title=title, show_header=False, expand=False,
+                      box=glyphs.box_for(console or Console()))
         table.add_column("", width=2)
         table.add_column("Check", style="bold")
         table.add_column("Result", overflow="fold")
-        for row in self.rows:
-            table.add_row(*row)
+        for status, check, result in self.rows:
+            mark = f"[{_STATUS_STYLE.get(status, 'white')}]{marks.get(status, status)}[/]"
+            table.add_row(mark, check, glyphs.sanitize(result, console or Console()))
         return table
 
 
@@ -208,5 +216,6 @@ def doctor(pin_model: bool = False, warm: bool = False) -> int:
     cfg = load_config()
     _check_policy(report, cfg)
     _check_model(report, cfg, pin_model, warm)
-    Console().print(report.table())
+    console = Console()
+    console.print(report.table(console))
     return 1 if report.failures else 0

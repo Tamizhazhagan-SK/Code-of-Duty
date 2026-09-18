@@ -1,16 +1,23 @@
-"""Regenerate the tiered terminal-logo assets from a source image.
+"""Regenerate the terminal-logo assets from the source image.
 
-Usage:
-    python scripts/render_logo_assets.py path/to/logo.png
+    python scripts/render_logo_assets.py [path/to/logo.png] [--width 30]
 
-Writes src/zerotrace/ui/assets/{logo.png, logo.ans, logo.txt}:
-  logo.png  optimized/downsized copy, sent as-is via Kitty/iTerm2 image protocols
-  logo.ans  truecolor Unicode half-block art (2 source pixel rows per cell)
-  logo.txt  plain ASCII ramp art, no color codes, no unicode
+Writes into src/zerotrace/ui/assets/:
+  logo.png        optimized copy, sent as-is via the Kitty/iTerm2 image protocols
+  mark.uni.txt    the mark as a Unicode shading ramp (" ░▒▓█"), one char per cell
+  mark.ascii.txt  the same mark as an ASCII density ramp (" .:-=+*#%@")
+  mark.small.*    the same two at a narrower width, for 60-column terminals
 
-Needs Pillow: `.venv\\Scripts\\python.exe -m pip install -e ".[dev]"`. The
-runtime package (src/zerotrace/ui/logo.py) never imports Pillow -- this script
-is a one-off maintainer step, not something that runs on a user's machine.
+Coverage is supersampled and averaged, so edges and the white cut-outs survive as
+mid-tones; a hard black/white threshold loses the eyes, mouth and horn detail.
+
+The source art is a black silhouette with white cut-out details on a transparent
+background, so "ink" is *opaque and dark*: the silhouette becomes white blocks in the
+terminal and the cut-outs stay empty. Colour is applied by the renderer (a single white
+style), never baked in here, so NO_COLOR and redirected output still behave.
+
+Needs Pillow (a dev extra). The runtime package never imports it: this is a maintainer
+step, and the generated assets are committed.
 """
 import sys
 from pathlib import Path
@@ -18,86 +25,97 @@ from pathlib import Path
 from PIL import Image
 
 ASSETS = Path(__file__).resolve().parent.parent / "src" / "zerotrace" / "ui" / "assets"
-_RAMP = " .:-=+*#%@"
+DEFAULT_SOURCE = ASSETS / "logo2.png"
+
 _PNG_MAX_SIDE = 240
-_ART_WIDTH = 34
-_CELL_ASPECT = 2.0  # terminal cells are roughly twice as tall as they are wide
-_TRANSPARENT = 16   # alpha below this is treated as "no pixel here"
+_CELL_ASPECT = 2.0   # a terminal cell is about twice as tall as it is wide
+_OPAQUE = 128        # alpha at or above this counts as part of the artwork
+_DARK = 140          # luminance below this is the silhouette (the ink)
+
+_SHADE_RAMP = " ░▒▓█"            # lightest -> darkest; all four exist in CP437
+_ASCII_RAMP = " .:-=+*#%@"       # the classic density ramp
 
 
-def _resize_for_halfblocks(img: Image.Image, width: int) -> Image.Image:
+def coverage(img: Image.Image, width: int, supersample: int = 4) -> list[list[float]]:
+    """Per-cell ink coverage in 0..1, computed by supersampling then averaging.
+
+    "Ink" is opaque *and* dark: the mark is a black silhouette whose white details are
+    cut-outs, so averaging preserves the eyes, mouth and horn edges as mid-tones instead
+    of collapsing them to a hard threshold (which is what made the first pass look wrong).
+    """
+    img = img.convert("RGBA")
+    bbox = img.getchannel("A").getbbox()
+    if bbox:
+        img = img.crop(bbox)
     src_w, src_h = img.size
-    cell_rows = max(round(src_h * width / src_w / _CELL_ASPECT), 1)
-    return img.resize((width, cell_rows * 2))
+    rows = max(round(src_h * width / src_w / _CELL_ASPECT), 1)
 
+    fine = img.resize((width * supersample, rows * supersample), Image.LANCZOS)
+    pixels = fine.load()
 
-def _resize_for_text(img: Image.Image, width: int) -> Image.Image:
-    src_w, src_h = img.size
-    height = max(round(src_h * width / src_w / _CELL_ASPECT), 1)
-    return img.resize((width, height))
-
-
-def _write_png(img: Image.Image) -> None:
-    small = img.copy()
-    small.thumbnail((_PNG_MAX_SIDE, _PNG_MAX_SIDE))
-    small.save(ASSETS / "logo.png", format="PNG", optimize=True)
-
-
-def _write_ansi(img: Image.Image) -> None:
-    art = _resize_for_halfblocks(img.convert("RGBA"), _ART_WIDTH)
-    w, h = art.size
-    pixels = art.load()
-    lines = []
-    for y in range(0, h, 2):
+    grid = []
+    for cell_y in range(rows):
         line = []
-        for x in range(w):
-            top = pixels[x, y]
-            bottom = pixels[x, y + 1] if y + 1 < h else (0, 0, 0, 0)
-            if top[3] < _TRANSPARENT and bottom[3] < _TRANSPARENT:
-                line.append(" ")
-            elif bottom[3] < _TRANSPARENT:
-                line.append(f"\033[38;2;{top[0]};{top[1]};{top[2]}m\u2580\033[0m")
-            elif top[3] < _TRANSPARENT:
-                line.append(f"\033[38;2;{bottom[0]};{bottom[1]};{bottom[2]}m\u2584\033[0m")
-            else:
-                line.append(f"\033[38;2;{top[0]};{top[1]};{top[2]}m"
-                            f"\033[48;2;{bottom[0]};{bottom[1]};{bottom[2]}m\u2580\033[0m")
-        lines.append("".join(line))
-    (ASSETS / "logo.ans").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        for cell_x in range(width):
+            ink = 0
+            for dy in range(supersample):
+                for dx in range(supersample):
+                    r, g, b, a = pixels[cell_x * supersample + dx, cell_y * supersample + dy]
+                    luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                    ink += 1 if (a >= _OPAQUE and luma < _DARK) else 0
+            line.append(ink / (supersample * supersample))
+        grid.append(line)
+    return grid
 
 
-def _write_ascii(img: Image.Image) -> None:
-    art = _resize_for_text(img.convert("LA"), _ART_WIDTH)
-    w, h = art.size
-    pixels = art.load()
+def _ramp_art(grid: list[list[float]], ramp: str) -> str:
+    """Map coverage to a character ramp (lightest first), trimming trailing blanks."""
+    last = len(ramp) - 1
     lines = []
-    for y in range(h):
-        line = []
-        for x in range(w):
-            luma, alpha = pixels[x, y]
-            if alpha < _TRANSPARENT:
-                line.append(" ")
-            else:
-                line.append(_RAMP[(255 - luma) * (len(_RAMP) - 1) // 255])
-        lines.append("".join(line).rstrip())
-    (ASSETS / "logo.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    for row in grid:
+        line = "".join(ramp[min(last, int(value * len(ramp)))] for value in row)
+        lines.append(line.rstrip())
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines) + "\n"
+
+
+def to_shaded(grid: list[list[float]]) -> str:
+    """Unicode shading ramp. All four blocks are CP437 characters, so this also renders
+    on a legacy Windows console once the codepage is UTF-8 or 437."""
+    return _ramp_art(grid, _SHADE_RAMP)
+
+
+def to_ascii(grid: list[list[float]]) -> str:
+    return _ramp_art(grid, _ASCII_RAMP)
+
+
+def write_png(img: Image.Image) -> None:
+    copy = img.convert("RGBA")
+    copy.thumbnail((_PNG_MAX_SIDE, _PNG_MAX_SIDE), Image.LANCZOS)
+    copy.save(ASSETS / "logo.png", optimize=True)
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        print(__doc__)
-        return 2
-    source = Path(argv[0])
+    args = [a for a in argv if not a.startswith("--")]
+    width = 30
+    for arg in argv:
+        if arg.startswith("--width="):
+            width = int(arg.split("=", 1)[1])
+    source = Path(args[0]) if args else DEFAULT_SOURCE
     if not source.is_file():
-        print(f"no such file: {source}", file=sys.stderr)
-        return 1
-    ASSETS.mkdir(parents=True, exist_ok=True)
-    with Image.open(source) as img:
-        img.load()
-        _write_png(img.convert("RGBA"))
-        _write_ansi(img)
-        _write_ascii(img)
-    print(f"wrote {ASSETS / 'logo.png'}, {ASSETS / 'logo.ans'}, {ASSETS / 'logo.txt'}")
+        print(f"no such image: {source}", file=sys.stderr)
+        return 2
+
+    img = Image.open(source)
+    grid = coverage(img, width)
+    for name, text in (("mark.uni.txt", to_shaded(grid)), ("mark.ascii.txt", to_ascii(grid))):
+        (ASSETS / name).write_text(text, encoding="utf-8", newline="\n")
+        print(f"wrote {name}: {len(text.splitlines())} lines x {width} cols")
+    write_png(img)
+    print(f"wrote logo.png (max side {_PNG_MAX_SIDE}px)")
     return 0
 
 

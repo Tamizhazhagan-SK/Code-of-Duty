@@ -11,7 +11,17 @@
   winget (ships with modern Windows 10/11).
 
 .EXAMPLE
+  # install
   iwr https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -useb | iex
+
+.EXAMPLE
+  # uninstall (one line; the &{...} wrapper is how you pass a switch to a piped script)
+  &([scriptblock]::Create((iwr https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -useb))) -Uninstall
+
+.EXAMPLE
+  # from a clone
+  pwsh -File .\install.ps1              # install
+  pwsh -File .\install.ps1 -Uninstall   # uninstall
 #>
 [CmdletBinding()]
 param(
@@ -19,7 +29,8 @@ param(
     [string]$Ref = $(if ($env:ZEROTRACE_REF) { $env:ZEROTRACE_REF } else { "main" }),
     [string]$Extras = $(if ($env:ZEROTRACE_EXTRAS) { $env:ZEROTRACE_EXTRAS } else { "" }),
     [switch]$WithLlm,
-    [switch]$WithPii
+    [switch]$WithPii,
+    [switch]$Uninstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +46,32 @@ if ($WithPii) { $Extras = if ($Extras) { "$Extras,pii-ner" } else { "pii-ner" } 
 function Write-Info($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Warn($msg) { Write-Host "!! $msg" -ForegroundColor Yellow }
 function Fail($msg) { Write-Host "ERROR $msg" -ForegroundColor Red; exit 1 }
+
+function Remove-ZeroTrace($python) {
+    # Hooks first, so no repo is left pointing at a binary that is about to disappear.
+    $exe = (Get-Command zerotrace -ErrorAction SilentlyContinue).Source
+    if (-not $exe) {
+        $scripts = (Invoke-Py $python @("-c", "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))")) | Select-Object -Last 1
+        $candidate = Join-Path $scripts "zerotrace.exe"
+        if (Test-Path $candidate) { $exe = $candidate }
+    }
+    if ($exe) {
+        Write-Info "Removing the global git hook..."
+        try { & $exe uninstall --global } catch { Write-Warn "uninstall --global reported an issue." }
+    } else {
+        Write-Warn "zerotrace.exe not found; skipping hook removal. Check 'git config --global core.hooksPath'."
+    }
+
+    Write-Info "Uninstalling the package..."
+    try { Invoke-Py $python @("-m", "pip", "uninstall", "--yes", "--quiet", "zerotrace") | Out-Null }
+    catch { Write-Warn "pip uninstall reported an issue." }
+
+    $home_ = Join-Path $env:USERPROFILE ".zerotrace"
+    if (Test-Path $home_) { Write-Info "Removing $home_..."; Remove-Item -Recurse -Force $home_ }
+
+    Write-Info "Uninstalled. Repos keep their history and files; only the hooks and the tool are gone."
+    Write-Warn "The PATH entry this installer added is left in place; remove it from User PATH if you want it gone."
+}
 
 function Find-Python {
     $candidates = @(
@@ -66,6 +103,12 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 }
 
 $python = Find-Python
+# Uninstalling must never trigger a Python *install*: handle it before the bootstrap below.
+if ($Uninstall) {
+    if (-not $python) { Fail "No Python found; nothing to uninstall (remove %USERPROFILE%\.zerotrace by hand)." }
+    Remove-ZeroTrace $python
+    exit 0
+}
 if (-not $python) {
     Write-Warn "No Python >= $PyMinMajor.$PyMinMinor found - attempting a best-effort install via winget."
     $winget = Get-Command winget -ErrorAction SilentlyContinue
