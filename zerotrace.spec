@@ -1,0 +1,38 @@
+# PyInstaller spec for the zerotrace CLI: a single-file binary that needs no Python on the
+# target machine. Same command on every OS (path separators, exe suffix etc. are handled here,
+# not on the command line):
+#
+#   pyinstaller zerotrace.spec
+#
+# Output: dist/zerotrace (Linux/macOS) or dist/zerotrace.exe (Windows).
+import sys
+
+from PyInstaller.utils.hooks import collect_data_files
+
+# Bundles detectors/rules/default.yml and evals/classifier_cases.jsonl (see the "wheel must
+# carry the rule pack and eval cases" checks in ci.yml / release.yml) alongside the compiled code.
+datas = collect_data_files("zerotrace")
+
+a = Analysis(
+    ["scripts/pyinstaller_entry.py"],
+    pathex=["src"],
+    binaries=[],
+    datas=datas,
+    hiddenimports=["detect_secrets.plugins"],
+    hookspath=[],
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+)
+pyz = PYZ(a.pure, a.zipped_data)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
+    name="zerotrace.exe" if sys.platform == "win32" else "zerotrace",
+    console=True,
+)
