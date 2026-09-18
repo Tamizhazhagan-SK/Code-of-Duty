@@ -12,6 +12,7 @@ from ..audit import exceptions as audit_exceptions
 from ..audit import log as audit_log
 from ..audit.fingerprint import of_finding
 from ..classifier.redact import language_of, redact
+from . import glyphs
 from ..policy.engine import Decision
 from ..remediation import applier, proposer
 from . import logo as logo_render
@@ -62,7 +63,8 @@ def _where(finding) -> str:
 
 
 def _summary_table(decisions) -> Table:
-    table = Table(title="Staged findings", title_style="bold", expand=False)
+    table = Table(title="Staged findings", title_style="bold", expand=False,
+                  box=glyphs.box_for(console))
     table.add_column("Location", overflow="fold")
     table.add_column("Rule")
     table.add_column("Severity")
@@ -89,7 +91,7 @@ def _finding_panel(decision) -> Panel:
     if f.line_text:
         parts += ["", Syntax(_masked(f.line_text, f), _LEXER.get(language_of(f.path), "text"),
                              theme="ansi_dark", line_numbers=True, start_line=f.line_no)]
-    return Panel(Group(*parts),
+    return Panel(Group(*parts), box=glyphs.box_for(console),
                  title=f"[{_ACTION_STYLE.get(decision.action, '')}]{decision.action.upper()}[/] "
                        f"{_where(f)}",
                  border_style=style.split()[-1] if style else "white")
@@ -113,19 +115,21 @@ def headless_report(decisions, cfg=None) -> None:
 def _preview(decision, proposal) -> Panel:
     f = decision.finding
     if proposal.mode == "unstage":
-        return Panel(proposal.note, title="Proposed fix", border_style="green")
+        return Panel(proposal.note, title="Proposed fix", border_style="green",
+                     box=glyphs.box_for(console))
     old = _masked(f.line_text, f)
     body = Text()
     body.append(f"- {old}\n", style="red")
     body.append(f"+ {_masked(proposal.new_line or '', f)}", style="green")
     if proposal.note:
         body.append(f"\n\n{proposal.note}", style="dim")
-    return Panel(body, title="Proposed fix (applied to the staged copy only)", border_style="green")
+    return Panel(body, title="Proposed fix (applied to the staged copy only)",
+                 border_style="green", box=glyphs.box_for(console))
 
 
 def _apply_unstage(finding, cfg, resolved_paths: set[str]) -> bool:
     for action in applier.unstage_and_ignore(finding.path):
-        console.print(f"  [green]✓[/] {action}")
+        console.print(f"  [green]{glyphs.for_console(console)['ok']}[/] {action}")
     resolved_paths.add(finding.path)
     audit_log.append({"fingerprint": of_finding(finding), "path": finding.path,
                       "action": "remediated", "method": "unstage_ignore"})
@@ -143,7 +147,8 @@ def _apply_fix(finding, cfg, mode: str) -> bool:
     audit_log.append({"fingerprint": of_finding(finding), "path": finding.path,
                       "action": "remediated",
                       "method": "vault_reference" if mode == "reference" else "placeholder"})
-    console.print(f"[green]✓ Fix applied to the {where.replace('+', ' and ')} "
+    tick = glyphs.for_console(console)["ok"]
+    console.print(f"[green]{tick} Fix applied to the {where.replace('+', ' and ')} "
                   "and re-staged.[/green]")
     return True
 
@@ -198,8 +203,8 @@ def banner() -> None:
         sys.stdout.write(art if art.endswith("\n") else art + "\n")
         sys.stdout.flush()
     console.print(Panel.fit(
-        "[bold cyan]ZeroTrace[/] · pre-commit secret & PII guardrail · local-first",
-        border_style="cyan",
+        glyphs.sanitize("[bold cyan]ZeroTrace[/] · secret & PII guardrail · local-first", console),
+        border_style="cyan", box=glyphs.box_for(console),
     ))
 
 
