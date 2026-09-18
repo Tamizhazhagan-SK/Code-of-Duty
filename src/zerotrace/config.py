@@ -46,7 +46,10 @@ class Config:
     model_auth_env: str = "ZEROTRACE_MODEL_TOKEN"   # bearer token read from env, never from yml
     model_allow_remote: bool = False
     model_digest: str = ""                 # pinned model digest; "" = not pinned
-    model_timeout_seconds: float = 20.0
+    # Measured: qwen2.5-coder:3b on CPU-only Docker took ~106 s p50 per call, so the old 20 s
+    # default failed 100% of calls closed to WARN on ordinary laptops (docs/AI_CLASSIFIER.md).
+    # A GPU or hosted endpoint answers in low single-digit seconds and never reaches this bound.
+    model_timeout_seconds: float = 120.0
     model_keep_alive: str = "30m"
     model_max_parallel: int = 4
     model_can_escalate: bool = True        # REAL_SECRET verdict may raise MEDIUM -> BLOCK

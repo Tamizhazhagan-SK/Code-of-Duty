@@ -1,7 +1,15 @@
 # Architecture
 
-## One question, layered answer
-> *Is this staged change safe to add to history, and if not, what is the safest fix?*
+## One question, two enforcement points
+> *Is this content safe to hand on — to git history, or to a model — and if not, what is the
+> safest fix?*
+
+The same detectors, post-processing and policy engine serve both:
+
+| Entry point | Input | Outcome |
+|---|---|---|
+| `zerotrace run` (git hook) | the staged diff | BLOCK / WARN / ALLOW + a human-approved fix |
+| `zerotrace gateway` | an AI-agent / MCP-tool / RAG payload on stdin | verdict + **sanitised text** safe to forward |
 
 Detection runs cheap and deterministic first. The LLM is a last-resort tie-breaker for
 ambiguous findings, and it only ever sees redacted features.
@@ -25,7 +33,22 @@ git commit ─► global core.hooksPath shim (chains repo/previous hooks, reatta
         7. remediation/applier.py         patch the INDEX blob; mirror to work tree if identical
         8. audit/                         hash-chained log + exceptions in .git/zerotrace/
 git push ─► pre-push shim ─► zerotrace pre-push   (every outgoing commit, deterministic only)
+
+agent/tool payload ─► zerotrace gateway
+        1. gateway/payload.py             arbitrary text -> the same Unit list the collectors emit
+        2. the detectors above, plus
+             confidentiality.py           INTERNAL ONLY / RESTRICTED classification markers
+             prompt_injection.py          instruction override, role hijack, exfiltration,
+                                          and classifier-hijack attempts aimed at our own tie-break
+        3. pipeline.postprocess + policy/engine.py   (shared, unchanged)
+        4. gateway/__init__.py            masks each finding in place and returns
+                                          GatewayResult(verdict, sanitized_text, decisions)
 ```
+
+Findings whose remediation is per value — PII, prompt injection, confidentiality — are kept
+per value in `dedupe`, not collapsed to one per line: at the gateway each one drives its own
+masking action, so collapsing them would silently forward an injected instruction that shared a
+line with a secret.
 
 ## Module map
 - `installer.py`: global/system/repo install, hook shims, chaining, uninstall/restore.
@@ -36,11 +59,16 @@ git push ─► pre-push shim ─► zerotrace pre-push   (every outgoing commit
 - `collectors/`: diff → `Unit(path, file_class, line_no, text, window, rev)` + `Changeset`.
 - `detectors/`: each returns `Finding(rule_id, kind, severity, confidence, …)`. Detectors
   never decide policy.
-- `pipeline.py`: one path for `run`, `review`, `scan` and `pre-push`.
+- `pipeline.py`: one path for `run`, `review`, `scan`, `pre-push` and the gateway.
+- `gateway/`: runtime enforcement point. `payload.py` turns arbitrary text (JSON, prose, tool
+  output) into `Unit`s; `__init__.py` masks findings and returns a verdict plus the full
+  decision list for the audit log. It sanitises rather than blocks, so agent workflows continue.
 - `policy/engine.py`: pure decision function with asymmetric model trust (ADR 0002).
 - `classifier/`: optional. `redact.py` runs before anything else in here.
 - `remediation/`: language-aware proposals, index-safe application, unstage + gitignore.
 - `doctor.py`, `evals/`: health checks and classifier measurement.
+- `ui/logo.py`, `ui/progress.py`, `ui/capability.py`: terminal-capability detection with ASCII
+  fallbacks, so output degrades instead of raising on legacy consoles.
 
 ## Where state lives
 Audit log, exceptions and the verdict cache live in `.git/zerotrace/`, inside the git dir, so a

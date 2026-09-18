@@ -15,6 +15,9 @@ Use this skill to run a local secret/PII gate over staged changes.
 ## When to use
 - Before a commit, or when asked to "check for secrets/PII" in staged code.
 - When reviewing a diff for hardcoded credentials, connection strings, or PII.
+- Before passing untrusted text (ticket, web page, tool output) to a model: pipe it through
+  `zerotrace gateway`, which masks secrets/PII and neutralises indirect prompt injection,
+  returning sanitised text plus a verdict.
 
 ## How to run
 1. `zerotrace scan --staged --format json` scans `git diff --cached` only (added lines) and
