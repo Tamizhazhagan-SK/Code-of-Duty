@@ -30,6 +30,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now refuses to honor an ALLOW verdict when the finding's context matches a prompt-injection
   pattern, regardless of what the model concluded (found via `zerotrace eval`).
 
+## [Unreleased]
+### Fixed
+- Gateway: a prompt injection sharing a line with a secret was dropped by `pipeline.dedupe`, so
+  the injected instruction was forwarded to the model and missing from the audit record. PII,
+  prompt-injection and confidentiality findings are now deduplicated per value, not per line.
+### Changed
+- Default `model.timeout_seconds` raised from 20 s to 120 s: measured CPU-only inference is
+  ~106 s p50, so the old default failed every tie-break closed to WARN in repos without a config.
+- README and `docs/ARCHITECTURE.md` describe both enforcement points (commit time and AI
+  runtime); `sonar-project.properties` now analyses the installer and fleet scripts.
+
 ## [0.1.0] - 2026-09-17
 First public release.
 ### Added

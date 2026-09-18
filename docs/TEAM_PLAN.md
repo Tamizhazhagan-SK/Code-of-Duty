@@ -10,6 +10,20 @@ Everything in `src/` that is listed below as Track A stays with Track A. Track B
 measurements, Windows, packaging and the pitch. Where Track B needs an engine change, open an
 issue or a PR rather than editing Track A's files directly.
 
+## Status (updated 18 Sep 2026)
+
+Track B is **complete**, and several Track A/P5 items landed alongside it. What follows is kept
+for context; jump to "What is left" at the bottom for the live list.
+
+| Task | State | Evidence |
+|---|---|---|
+| B1 measure the AI tie-break | ✅ done | `docs/AI_CLASSIFIER.md` "Measured results": p50 105.8 s on CPU-only Docker, 4/4 organic escalations, 2/2 injection cases fooled the model |
+| B2 Windows rehearsal | ✅ done | `docs/DEMO_RUNBOOK.md`, incl. the legacy-console mojibake caveat |
+| B3 runbook and pitch | ✅ done | `docs/DEMO_RUNBOOK.md` 8 beats + timings |
+| B4 enterprise packaging | ✅ done, exceeded | `.github/workflows/release.yml` (PyInstaller binaries), `deploy/` (Intune + Jamf + policy example), `.claude-plugin` layout, real no-egress CI job |
+| B5 adversarial testing | ✅ done | `docs/THREAT_MODEL.md` "Known gaps": base64 and homoglyph bypasses fixed with regression tests; classifier hijack fixed at the policy layer |
+| Extra (unplanned) | ✅ shipped | runtime AI gateway, one-command installers, WSL support, Apache-2.0 licence, v0.1.0 |
+
 ## 0. Both of us, before anything else (15 minutes)
 
 ```bash
@@ -153,7 +167,26 @@ ones turned into rule-pack additions (`src/zerotrace/detectors/rules/default.yml
 | Final `pytest`, `ruff`, `mypy`, and both demo scripts run clean | both | green on both machines |
 | Repo scans clean under its own tool (dogfooding) | both | `zerotrace scan --all --no-model` reports nothing |
 
-## If you have only one evening
+## What is left (live list)
 
-Do **B1** and **B2**. Real model numbers and a rehearsed Windows demo are worth more than any
-extra feature.
+**Before the pitch**
+1. Rehearse the demo on the exact machine and console you will present from — the terminal logo
+   and progress bar are new, and the runbook already flags glyph problems on legacy consoles.
+2. Re-measure the classifier on a GPU or the AWS endpoint if either becomes available. 106 s p50
+   is the weakest number in the deck; the same eval on a GPU should change it by an order of
+   magnitude. Update `docs/AI_CLASSIFIER.md` if it does.
+3. Put the open split-secret bypass on the honesty slide (see below) rather than hoping nobody
+   asks.
+
+**Engine (Track A, post-hackathon)**
+4. **Split/concatenated secrets** (`part_a + part_b`) are still undetected — documented in
+   `docs/THREAT_MODEL.md`. It needs cross-line data-flow analysis, so it is deliberately not a
+   rushed heuristic.
+5. Exceptions as a committed, PR-reviewed file (`docs/DEPLOYMENT.md` §7).
+6. Opt-in fleet metrics: counts and fingerprints only, never values.
+
+**Evidence we still lack**
+7. A pilot install on a handful of real internal repos to get a true false-positive rate. Every
+   precision claim on stage should come from that, not from our own fixtures.
+8. One honest quote from a developer about how they handle local credentials today
+   (`docs/RESEARCH.md` §10).

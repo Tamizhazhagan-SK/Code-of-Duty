@@ -63,9 +63,9 @@ Docker Desktop's default WSL2 VM with no GPU passthrough, using JSON-schema-cons
 **Latency.** A single direct classifier call measured 106.8s end to end. A 12-case run (stratified
 sample of the bundled 36: 6 `real`, 3 `placeholder`, 3 `fixture`, including all 3 built-in
 prompt-injection cases) measured **p50 105.8s / p95 130.4s**, 0 timeouts at `timeout_seconds: 150`.
-The repo's default of 20s (and even the first retry at 60s) caused **100% of requests to fail
+The then-default of 20s (and even a retry at 60s) caused **100% of requests to fail
 closed to WARN** on this exact machine — not a code bug, a genuine CPU-inference-speed finding.
-Recommendation: measure your own deployment before trusting any bundled default; a GPU-backed or
+The built-in default is now **120 s** as a result. Recommendation: measure your own deployment and lower it for a GPU or hosted endpoint; a GPU-backed or
 hosted endpoint (`docs/AWS_INFERENCE.md`) should be dramatically faster, but low double-digit
 seconds is realistic for constrained decoding on CPU with this model size.
 

@@ -212,7 +212,7 @@ model:
   # allow_remote: false        # required (with https) for a non-localhost endpoint
   # auth_env: ZEROTRACE_MODEL_TOKEN
   digest: ""                   # pin with: zerotrace doctor --pin-model
-  timeout_seconds: 20
+  timeout_seconds: 120         # CPU inference is slow; lower it for a GPU/hosted endpoint
   keep_alive: 30m
 policy:
   block_severity: [critical, high]

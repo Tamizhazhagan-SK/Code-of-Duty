@@ -85,12 +85,19 @@ def postprocess(findings: list[Finding], cfg) -> list[Finding]:
     return dedupe(kept)
 
 
+# Detectors whose findings drive their own remediation (a synthetic value, a masked span, a
+# blocked instruction) are kept per value. Collapsing them into the line's worst secret finding
+# would silently drop an action: the gateway, for example, would forward an injected instruction
+# to the model because a secret on the same line outranked it.
+_PER_VALUE_SOURCES = ("pii", "prompt_injection", "confidentiality")
+
+
 def dedupe(findings: list[Finding]) -> list[Finding]:
-    """One secret finding per (path, line); PII findings per (path, line, value)."""
+    """One secret finding per (path, line); PII/injection/classification findings per value."""
     best: dict[tuple, Finding] = {}
     for f in findings:
-        key: tuple = (f.path, f.line_no, "pii", f.matched_value) if f.source == "pii" \
-            else (f.path, f.line_no, "secret")
+        key: tuple = (f.path, f.line_no, f.source, f.matched_value) \
+            if f.source in _PER_VALUE_SOURCES else (f.path, f.line_no, "secret")
         cur = best.get(key)
         rank = (SEVERITY_ORDER.get(f.severity, 0), _SOURCE_PRIORITY.get(f.source, 0))
         if cur is None or rank > (SEVERITY_ORDER.get(cur.severity, 0),

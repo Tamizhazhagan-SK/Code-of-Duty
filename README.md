@@ -1,4 +1,4 @@
-# ZeroTrace: Pre-Commit Secret & PII Guardrail
+# ZeroTrace: Secret & PII Guardrail for Commits and AI Agents
 
 [![CI](https://github.com/Tamizhazhagan-SK/Code-of-Duty/actions/workflows/ci.yml/badge.svg)](https://github.com/Tamizhazhagan-SK/Code-of-Duty/actions/workflows/ci.yml)
 [![License: Apache-2.0](<https://img.shields.io/badge/License-Apache%202.0-blue.svg>)](LICENSE)
@@ -6,10 +6,15 @@
 
 > Stop sensitive data before it leaves the developer's machine, in **every** repo, with one install.
 
-ZeroTrace is a **local-first** git guardrail. On every commit it inspects *only the lines being
-added*, finds secrets and PII with deterministic detectors, lets a small local LLM settle the
-*ambiguous* cases (it sees only redacted "shape" features, never the value), explains the risk,
-and applies a developer-approved fix to the staged copy before anything enters git history.
+ZeroTrace is a **local-first** secret and PII policy engine with **two enforcement points**:
+
+1. **Commit time** — a git hook inspects *only the lines being added*, finds secrets and PII with
+   deterministic detectors, lets a small local LLM settle the *ambiguous* cases (it sees only
+   redacted "shape" features, never the value), explains the risk, and applies a
+   developer-approved fix to the staged copy before anything enters git history.
+2. **AI runtime** — `zerotrace gateway` runs the same detectors over an AI-agent, MCP-tool or RAG
+   payload *before a model sees it*, masking secrets and PII and neutralising indirect prompt
+   injection. One policy, one audit trail, whether a human or an agent is doing the writing.
 
 **Design contract:** deterministic first. The model can never unblock a high-confidence secret,
 and any error fails **closed**.
@@ -94,6 +99,25 @@ before the push. Server-side scanning stays the real enforcement point (see `doc
 Placeholders (`${VAR}`, `<your-key>`, `changeme`, `os.environ[...]`, AWS doc examples),
 lockfile hashes and UUIDs are filtered before any decision.
 
+## Guarding AI agents at runtime
+
+Agents read untrusted text (tickets, web pages, tool output) and write code that gets committed.
+The same pipeline therefore runs at a second point:
+
+```bash
+cat payload.json | zerotrace gateway            # verdict + sanitized text on stdout
+```
+
+| Concern | What the gateway does |
+|---|---|
+| Secrets/PII in a payload heading for an LLM | masked to typed tokens (`<STRIPE_LIVE_KEY len=32>`) before the call |
+| **Indirect prompt injection** in fetched content | matched instruction-override / role-hijack / exfiltration patterns are replaced with `[BLOCKED: possible prompt injection]` |
+| Confidentiality markers (`INTERNAL ONLY`, `RESTRICTED`) | flagged so classified material is not pasted into a model |
+| A comment engineered to fool ZeroTrace's own tie-break | `policy/engine.py` refuses an ALLOW verdict when the context matches an injection pattern, whatever the model said |
+
+Nothing is dropped silently: every finding is returned in `decisions` for the audit log, and the
+call is sanitised rather than blocked outright, so agent workflows keep working.
+
 ## Fixes, not just failures
 
 `[V]` env/vault reference, language-aware (`os.environ["X"]`, `process.env.X`,
@@ -142,7 +166,7 @@ approval. See `skill/SKILL.md` and `docs/DEPLOYMENT.md` §6.
 - `docs/INSTALL.md`: supported OS/distro versions (verified, dated) and per-platform install notes
 - `docs/ARCHITECTURE.md`: pipeline and module map
 - `docs/DEPLOYMENT.md`: rolling out to every developer (MDM, org policy, CI backstop, agents, WSL)
-- `docs/AI_CLASSIFIER.md` · `docs/AWS_INFERENCE.md`: the model, redaction, and moving inference to AWS
+- `docs/AI_CLASSIFIER.md` · `docs/AWS_INFERENCE.md`: the model, redaction, measured results, and moving inference to AWS
 - `docs/THREAT_MODEL.md` · `SECURITY.md` · `docs/POLICY.md` · `docs/ADR/`
 - `docs/POSITIONING.md`: prior art and what is actually new here
 - `docs/RESEARCH.md`: why this still matters when the company already runs a vault (with sources)

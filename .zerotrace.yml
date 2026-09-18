@@ -11,7 +11,7 @@ model:
   # allow_remote: true         # and an https:// endpoint; only redacted features are sent
   # auth_env: ZEROTRACE_MODEL_TOKEN
   digest: ""                   # pin the served model: `zerotrace doctor --pin-model`
-  timeout_seconds: 150         # default of 20 measured 100% fail-closed-to-WARN on CPU-only
+  timeout_seconds: 150         # headroom over the measured ~106 s p50 on CPU-only Docker
                                 # Docker Desktop (no GPU passthrough): p50 105.8s / p95 130.4s
                                 # for a real classifier call. See docs/AI_CLASSIFIER.md
                                 # "Measured results". Lower this if your model endpoint is
