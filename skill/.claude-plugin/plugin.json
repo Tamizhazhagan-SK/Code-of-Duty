@@ -1,6 +1,8 @@
 {
   "name": "zerotrace",
-  "version": "0.1.0",
   "description": "Pre-commit secret & PII sanitizer agent (local-first).",
-  "author": "BMW TechWorks"
+  "version": "0.1.0",
+  "author": {
+    "name": "BMW TechWorks"
+  }
 }
