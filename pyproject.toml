@@ -35,7 +35,9 @@ Changelog = "https://github.com/Tamizhazhagan-SK/Code-of-Duty/blob/main/CHANGELO
 # NER-based PII (Presidio + spaCy). Heavy, so opt-in: `policy.pii.engine: presidio`.
 pii-ner = ["presidio-analyzer>=2.2", "presidio-anonymizer>=2.2"]
 llm = []                        # kept for back-compat; the model client is stdlib-only now
-dev = ["pytest", "pytest-cov", "mypy", "ruff", "pre-commit", "types-PyYAML"]
+# Pillow is only for scripts/render_logo_assets.py (offline asset generation);
+# the runtime logo renderer (ui/logo.py) never imports it.
+dev = ["pytest", "pytest-cov", "mypy", "ruff", "pre-commit", "types-PyYAML", "Pillow"]
 
 [project.scripts]
 zerotrace = "zerotrace.cli:main"

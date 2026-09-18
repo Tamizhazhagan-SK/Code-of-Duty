@@ -14,6 +14,7 @@ from ..audit.fingerprint import of_finding
 from ..classifier.redact import language_of, redact
 from ..policy.engine import Decision
 from ..remediation import applier, proposer
+from . import logo as logo_render
 
 console = Console(stderr=False, highlight=False)
 
@@ -192,6 +193,10 @@ def _interactive_resolve(decision, cfg, resolved_paths: set[str]) -> bool:
 
 
 def banner() -> None:
+    art = logo_render.render(console)
+    if art:
+        sys.stdout.write(art if art.endswith("\n") else art + "\n")
+        sys.stdout.flush()
     console.print(Panel.fit(
         "[bold cyan]ZeroTrace[/] · pre-commit secret & PII guardrail · local-first",
         border_style="cyan",

@@ -11,6 +11,7 @@ import shlex
 import stat
 import subprocess
 import sys
+from collections.abc import Callable
 
 from . import gitutil, platform_env
 from .config import zerotrace_home
@@ -18,6 +19,15 @@ from .config import zerotrace_home
 MARKER = ".zerotrace-managed"
 HOOKS_PATH_KEY = "core.hooksPath"      # the git config key a global install owns
 TEMPLATE_DIR_KEY = "init.templateDir"  # repo-local fallback: applied by git init/clone only
+# One label per real unit of work in install(), in order -- the CLI progress bar's total.
+INSTALL_STEPS = (
+    "Checking install target",
+    "Writing hook shims",
+    "Registering core.hooksPath",
+    "Writing template-dir shims",
+    "Registering init.templateDir",
+    "Saving install state",
+)
 HOOK_NAMES = (
     "applypatch-msg", "pre-applypatch", "post-applypatch", "pre-commit", "pre-merge-commit",
     "prepare-commit-msg", "commit-msg", "post-commit", "pre-rebase", "post-checkout",
@@ -260,8 +270,18 @@ def _checked_hooks_dir(hooks_dir: str) -> str:
 
 
 def install(scope: str = "global", hooks_dir: str | None = None,
-            template_dir: str | None = None) -> list[str]:
-    """scope: global | system. Returns human-readable log lines."""
+            template_dir: str | None = None,
+            on_step: Callable[[str], None] | None = None) -> list[str]:
+    """scope: global | system. Returns human-readable log lines.
+
+    on_step, if given, is called once per INSTALL_STEPS label, in order, purely
+    so a caller (the CLI) can drive a progress bar -- it never changes behavior.
+    """
+    def _step(label: str) -> None:
+        if on_step:
+            on_step(label)
+
+    _step(INSTALL_STEPS[0])
     hooks_dir = _checked_hooks_dir(hooks_dir or default_hooks_dir(scope))
     template_dir = template_dir or default_template_dir(scope)
     template_hooks_dir = _checked_hooks_dir(os.path.join(template_dir, "hooks"))
@@ -279,8 +299,11 @@ def install(scope: str = "global", hooks_dir: str | None = None,
         if prev:
             prev = os.path.abspath(os.path.expanduser(prev))
 
+    _step(INSTALL_STEPS[1])
     write_hooks(hooks_dir, prev, scope)
     log.append(f"wrote {len(HOOK_NAMES)} hook shims to {hooks_dir}")
+
+    _step(INSTALL_STEPS[2])
     result = _git_config(scope, HOOKS_PATH_KEY, _sh_path(hooks_dir))
     if result.returncode != 0:
         raise PermissionError(result.stderr.strip() or f"could not set {scope} {HOOKS_PATH_KEY}")
@@ -303,13 +326,17 @@ def install(scope: str = "global", hooks_dir: str | None = None,
         if prev:
             prev_template_hooks = os.path.join(os.path.abspath(os.path.expanduser(prev)), "hooks")
 
+    _step(INSTALL_STEPS[3])
     write_template_hooks(template_hooks_dir, prev_template_hooks, scope)
+
+    _step(INSTALL_STEPS[4])
     result = _git_config(scope, TEMPLATE_DIR_KEY, _sh_path(template_dir))
     if result.returncode != 0:
         raise PermissionError(result.stderr.strip() or f"could not set {scope} {TEMPLATE_DIR_KEY}")
     state[f"{scope}_template_dir"] = template_dir
     log.append(f"git config --{scope} {TEMPLATE_DIR_KEY} {_sh_path(template_dir)}")
 
+    _step(INSTALL_STEPS[5])
     _save_state(state)
     return log
 

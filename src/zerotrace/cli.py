@@ -249,11 +249,18 @@ def init(args) -> int:
 
 def install_cmd(args) -> int:
     from . import installer
+    from .ui.progress import Bar
+    from .ui.terminal import banner
+    banner()
+    bar = Bar(len(installer.INSTALL_STEPS))
     try:
-        lines = installer.install("system" if args.system else "global", args.hooks_dir)
+        lines = installer.install("system" if args.system else "global", args.hooks_dir,
+                                  on_step=bar.step)
     except (PermissionError, gitutil.GitError) as exc:
+        bar.finish()
         print(f"zerotrace: install failed: {exc}", file=sys.stderr)
         return 1
+    bar.finish()
     for line in lines:
         print(f"zerotrace: {line}")
     print("zerotrace: every repo on this machine now runs ZeroTrace on commit and push.")
