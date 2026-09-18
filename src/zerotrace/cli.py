@@ -14,7 +14,7 @@ from .collectors import staged_diff
 from .config import load_config
 
 COMMANDS = ("run", "review", "scan", "pre-push", "init", "install", "uninstall", "doctor",
-            "eval", "version")
+            "eval", "gateway", "version")
 _MAX_PUSH_COMMITS = 300
 _SHA_RE = re.compile(r"\A[0-9a-f]{40,64}\Z")
 
@@ -282,6 +282,20 @@ def eval_cmd(args) -> int:
     return run_eval(args.cases, args.model or [], args.runs)
 
 
+def gateway_cmd(args) -> int:
+    """Sanitize an AI-agent/MCP-tool/RAG payload read from stdin."""
+    from .gateway import sanitize
+    result = sanitize(sys.stdin.read())
+    if args.format == "json":
+        print(json.dumps({"verdict": result.verdict, "sanitized_text": result.sanitized_text},
+                         indent=2))
+    else:
+        print(result.sanitized_text)
+        if result.verdict != "allow":
+            print(f"\nzerotrace: gateway verdict: {result.verdict}", file=sys.stderr)
+    return 0 if result.verdict == "allow" else 1
+
+
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="zerotrace", description=__doc__)
     sub = p.add_subparsers(dest="command")
@@ -330,11 +344,21 @@ def _parser() -> argparse.ArgumentParser:
     e.add_argument("--model", action="append", help="model name(s) to compare")
     e.add_argument("--runs", type=int, default=1)
 
+    gw = sub.add_parser("gateway", help="sanitize an AI-agent/MCP-tool/RAG payload from stdin")
+    gw.add_argument("--format", choices=["text", "json"], default="text")
+
     sub.add_parser("version", help="print version")
     return p
 
 
 def main(argv: list[str] | None = None) -> None:
+    # Legacy Windows consoles default to a non-UTF-8 codepage; the ✓/✗ glyphs we print would
+    # otherwise crash with UnicodeEncodeError instead of just displaying as '?'.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(ValueError):
+                reconfigure(errors="replace")
     argv = sys.argv[1:] if argv is None else list(argv)
     if not argv or (argv[0] not in COMMANDS and argv[0] not in ("-h", "--help")):
         argv = ["run", *argv]
@@ -353,7 +377,7 @@ def main(argv: list[str] | None = None) -> None:
     handlers = {
         "run": run, "review": review, "scan": scan, "pre-push": pre_push, "init": init,
         "install": install_cmd, "uninstall": uninstall_cmd, "doctor": doctor_cmd,
-        "eval": eval_cmd,
+        "eval": eval_cmd, "gateway": gateway_cmd,
     }
     try:
         code = handlers[args.command](args)
