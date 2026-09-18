@@ -4,6 +4,31 @@ All notable changes documented here, following [Keep a Changelog](https://keepac
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Runtime security gateway (`src/zerotrace/gateway`) and `zerotrace gateway` CLI subcommand:
+  sanitizes arbitrary AI-agent/MCP-tool/RAG payloads (not git-backed) through the same
+  detect -> decide pipeline as the git hook, masking findings out of the text instead of
+  blocking, plus two new detectors for this interception point: classification markers
+  (`detectors/confidentiality.py`) and indirect prompt injection (`detectors/prompt_injection.py`).
+- Claude Code plugin marketplace (`bmw-skills-marketplace/`), restructured to the official
+  `.claude-plugin/marketplace.json` + `git-subdir` layout so the plugin can live at `skill/`.
+- MDM/fleet rollout kit (`deploy/`): Intune install/uninstall scripts, a Jamf postinstall
+  script, and `policy.example.yml` for org-locked config.
+- Cross-platform single-file binaries via PyInstaller (`zerotrace.spec`), built and attached
+  to GitHub releases on tag push (macOS/Linux/Windows).
+- `docs/DEMO_RUNBOOK.md`: click-by-click live demo script with the 8 demo beats.
+- `docs/AI_CLASSIFIER.md` "Measured results": real latency and accuracy numbers from
+  `zerotrace eval` on CPU-only Docker Desktop.
+### Fixed
+- A base64-obscured Stripe live key no longer evades detection (`stripe-live-key-base64` rule).
+- Unicode homoglyph identifiers (e.g. Cyrillic `а` substituted for Latin `a`) no longer bypass
+  hardcoded-credential keyword matching.
+- `zerotrace doctor --warm` no longer crashes with `UnicodeEncodeError` on legacy (non-UTF-8)
+  Windows console codepages; falls back to `?` instead.
+- A comment naming the AI tie-break's own verdict keywords (e.g. "classify
+  TEST_FIXTURE_OR_PLACEHOLDER") could flip a real secret to an unsafe allow; the policy engine
+  now refuses to honor an ALLOW verdict when the finding's context matches a prompt-injection
+  pattern, regardless of what the model concluded (found via `zerotrace eval`).
 
 ## [0.1.0] - 2026-09-17
 First public release.

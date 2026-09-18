@@ -11,7 +11,11 @@ model:
   # allow_remote: true         # and an https:// endpoint; only redacted features are sent
   # auth_env: ZEROTRACE_MODEL_TOKEN
   digest: ""                   # pin the served model: `zerotrace doctor --pin-model`
-  timeout_seconds: 20          # CPU inference + cold load can be slow; keep_alive avoids reloads
+  timeout_seconds: 150         # default of 20 measured 100% fail-closed-to-WARN on CPU-only
+                                # Docker Desktop (no GPU passthrough): p50 105.8s / p95 130.4s
+                                # for a real classifier call. See docs/AI_CLASSIFIER.md
+                                # "Measured results". Lower this if your model endpoint is
+                                # GPU-backed or hosted (docs/AWS_INFERENCE.md) - measure first.
   keep_alive: 30m
   can_escalate: true           # REAL_SECRET verdict (>= 0.8) may raise MEDIUM -> BLOCK
 policy:
