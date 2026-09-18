@@ -122,6 +122,21 @@ never touched.
 4. `--no-verify` is caught by the pre-push backstop.
 5. `doctor` and an audit log that stores fingerprints only.
 
+## Claude Code plugin
+
+ZeroTrace is also packaged as a Claude Code Agent Skill (`skill/`), distributed through
+`bmw-skills-marketplace/` (a `.claude-plugin/marketplace.json` catalog):
+
+```
+/plugin marketplace add Tamizhazhagan-SK/Code-of-Duty --sparse bmw-skills-marketplace
+/plugin install zerotrace@bmw-skills-marketplace
+```
+
+The marketplace entry fetches the plugin from this same repository's `skill/` directory (a
+`git-subdir` source), so no separate repo or copy of the skill is maintained. The skill runs
+`zerotrace scan --staged --format json` and proposes fixes; it never applies one without your
+approval. See `skill/SKILL.md` and `docs/DEPLOYMENT.md` §6.
+
 ## Docs
 
 - `docs/INSTALL.md`: supported OS/distro versions (verified, dated) and per-platform install notes

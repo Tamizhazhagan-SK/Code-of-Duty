@@ -1,0 +1,18 @@
+{
+  "name": "bmw-skills-marketplace",
+  "owner": {
+    "name": "BMW TechWorks"
+  },
+  "description": "BMW TechWorks Claude Code plugin catalog.",
+  "plugins": [
+    {
+      "name": "zerotrace",
+      "description": "Local-first pre-commit secret & PII sanitizer.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/Tamizhazhagan-SK/Code-of-Duty.git",
+        "path": "skill"
+      }
+    }
+  ]
+}
