@@ -106,6 +106,18 @@ rules:
     env_name: STRIPE_API_KEY
     explain: A live Stripe secret key can issue refunds, read customer and payment data and move money.
 
+  - id: stripe-live-key-base64
+    title: Stripe live key, base64-obscured
+    severity: critical
+    # The stable middle chars of base64("sk_live_"/"rk_live_") at each of the 3 possible byte
+    # alignments (surrounding bytes shift the boundary chars, so those are left out).
+    keywords: [c2tfbgl2zv, nrx2xpdmvf, za19saxzlx, cmtfbgl2zv, jrx2xpdmvf, ya19saxzlx]
+    regex: '\b((?:c2tfbGl2ZV|NrX2xpdmVf|za19saXZlX|cmtfbGl2ZV|JrX2xpdmVf|ya19saXZlX)[A-Za-z0-9+/]{8,}={0,2})'
+    secret_group: 1
+    env_name: STRIPE_API_KEY
+    explain: A Stripe live key appears base64-encoded rather than in plaintext. Encoding it does not
+      change what it grants; decode and rotate it like any other exposed live key.
+
   - id: stripe-test-key
     title: Stripe test secret key
     severity: medium

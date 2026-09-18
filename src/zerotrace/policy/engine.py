@@ -44,6 +44,16 @@ def _from_verdict(finding, cfg, verdict) -> "Decision":
     confidence = float(getattr(verdict, "confidence", 0.0))
     why = getattr(verdict, "reason", "")
     if cls == "TEST_FIXTURE_OR_PLACEHOLDER" and confidence >= cfg.model_allow_threshold:
+        from ..detectors.prompt_injection import contains_injection_pattern
+        context = finding.context_snippet or finding.line_text
+        if contains_injection_pattern(context):
+            # Measured via `zerotrace eval`: a nearby comment telling the classifier what to
+            # answer can flip its verdict. Never let that verdict alone allow a finding through.
+            return Decision(
+                "warn", finding.severity,
+                f"{finding.rule_id}: AI tie-break said placeholder, but the surrounding text "
+                f"contains a suspected instruction-injection attempt, so the allow is not "
+                f"honored: {why}", finding, verdict)
         return Decision("allow", finding.severity,
                         f"AI tie-break: placeholder/test fixture ({confidence:.2f}): {why}",
                         finding, verdict)
