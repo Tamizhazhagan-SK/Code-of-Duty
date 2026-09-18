@@ -1,0 +1,28 @@
+# Sample org-wide ZeroTrace policy (deploy/policy.example.yml).
+#
+# Copy to the org policy path and lock the keys your fleet must not weaken:
+#   Linux/macOS: /etc/zerotrace/policy.yml  (or /Library/Application Support/zerotrace/policy.yml)
+#   Windows:     %ProgramData%\zerotrace\policy.yml
+#   Override the path on any OS with the ZEROTRACE_POLICY env var.
+#
+# Layer order is: built-in defaults <- this org policy <- ~/.zerotrace/config.yml <- repo
+# .zerotrace.yml. Keys listed under `locked` win over every layer below this one, so a
+# `critical` finding or a redirected model endpoint can never be configured away by a repo
+# or a developer. See docs/DEPLOYMENT.md §3.
+
+locked: [enabled, policy.block_severity, model.endpoint, model.allow_remote]
+
+enabled: true
+
+policy:
+  block_severity: [critical, high]
+
+model:
+  runtime: openai                       # or "ollama" for per-laptop local inference
+  endpoint: https://zerotrace-inference.internal.example
+  allow_remote: true                    # required, plus https://, for any non-loopback endpoint
+  auth_env: ZEROTRACE_MODEL_TOKEN        # bearer token read from this env var, never from yml
+  digest: ""                            # pin with: zerotrace doctor --pin-model
+
+rules:
+  extra: [/etc/zerotrace/rules-acme.yml]  # internal token formats, employee-ID patterns
