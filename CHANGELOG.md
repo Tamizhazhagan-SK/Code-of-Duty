@@ -31,6 +31,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pattern, regardless of what the model concluded (found via `zerotrace eval`).
 
 ## [Unreleased]
+### Added
+- Brand mark in the terminal: the logo image is rendered as a shaded Unicode ramp (ASCII on
+  legacy consoles) with the ZEROTRACE wordmark beside it, shown by `zerotrace install`.
+- `zerotrace ui [--tier ...]`: renders every screen so a console (CMD, PowerShell, Windows
+  Terminal, IDE terminals, CI logs) can be checked in one command.
+- One-line uninstall: `./install.sh --uninstall` / `install.ps1 -Uninstall`.
+- `detectors/composed.py`: secrets assembled from parts (`part_a + part_b`) are detected.
+- Reviewable exceptions: `.zerotrace-exceptions.json` plus `zerotrace exceptions
+  [--promote|--prune]`.
+
 ### Fixed
 - Gateway: a prompt injection sharing a line with a secret was dropped by `pipeline.dedupe`, so
   the injected instruction was forwarded to the model and missing from the audit record. PII,

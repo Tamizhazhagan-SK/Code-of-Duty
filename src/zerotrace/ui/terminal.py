@@ -99,7 +99,7 @@ def _finding_panel(decision) -> Panel:
 
 def _fix_hint(decision, cfg) -> str:
     p = proposer.propose(decision, "reference", cfg)
-    if p.mode == "unstage":
+    if p.mode in ("unstage", "manual"):
         return p.note
     return f"suggested: {_masked(p.new_line or '', decision.finding).strip()}"
 
@@ -114,8 +114,9 @@ def headless_report(decisions, cfg=None) -> None:
 
 def _preview(decision, proposal) -> Panel:
     f = decision.finding
-    if proposal.mode == "unstage":
-        return Panel(proposal.note, title="Proposed fix", border_style="green",
+    if proposal.mode in ("unstage", "manual"):
+        title = "Proposed fix" if proposal.mode == "unstage" else "Fix this by hand"
+        return Panel(proposal.note, title=title, border_style="green",
                      box=glyphs.box_for(console))
     old = _masked(f.line_text, f)
     body = Text()
@@ -164,6 +165,8 @@ def _record_exception(finding, cfg) -> bool:
                       "action": "exception", "reason": reason})
     console.print(f"[yellow]Exception recorded for {cfg.exceptions_ttl_days} days "
                   "(scoped to this exact line).[/yellow]")
+    console.print("[dim]It is local to you. `zerotrace exceptions --promote` moves it into "
+                  f"{audit_exceptions.SHARED_FILE} so a reviewer sees it in the PR.[/]")
     return True
 
 
@@ -173,7 +176,11 @@ def _offer_choices(decision, cfg) -> tuple[list[str], str]:
     if finding.line_no == 0:
         console.print(_preview(decision, proposer.propose(decision, "unstage", cfg)))
         return ["u", "e", "a"], "[U]nstage + gitignore  [E]xception  [A]bort"
-    console.print(_preview(decision, proposer.propose(decision, "reference", cfg)))
+    reference = proposer.propose(decision, "reference", cfg)
+    console.print(_preview(decision, reference))
+    if reference.mode == "manual":
+        # Nothing to rewrite automatically (e.g. a value assembled from parts).
+        return ["e", "a"], "[E]xception  [A]bort"
     placeholder = proposer.propose(decision, "placeholder", cfg)
     console.print(f"  [dim]or [R]: {_masked(placeholder.new_line or '', finding).strip()}[/]")
     return (["v", "r", "e", "a"],

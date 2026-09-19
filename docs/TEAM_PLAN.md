@@ -178,12 +178,18 @@ ones turned into rule-pack additions (`src/zerotrace/detectors/rules/default.yml
 3. Put the open split-secret bypass on the honesty slide (see below) rather than hoping nobody
    asks.
 
-**Engine (Track A, post-hackathon)**
-4. **Split/concatenated secrets** (`part_a + part_b`) are still undetected — documented in
-   `docs/THREAT_MODEL.md`. It needs cross-line data-flow analysis, so it is deliberately not a
-   rushed heuristic.
-5. Exceptions as a committed, PR-reviewed file (`docs/DEPLOYMENT.md` §7).
-6. Opt-in fleet metrics: counts and fingerprints only, never values.
+**Engine (Track A)**
+4. ✅ **Split/concatenated secrets** — `detectors/composed.py` resolves string literals bound to
+   names in the same staged file and joins `+` chains, so `part_a + part_b` is caught as
+   `composed-<rule>`. Deliberately narrow (no slicing, `join()`, arithmetic or cross-file), and
+   the remediation is "fix by hand": the value is not on the line, so an automatic rewrite would
+   be a guess.
+5. ✅ **Exceptions are reviewable** — `.zerotrace-exceptions.json` is committed and PR-reviewed;
+   `[E]` still writes locally, and `zerotrace exceptions --promote` moves entries into it.
+   `--prune` drops expired ones. Fingerprints only, and every entry expires.
+6. Opt-in fleet metrics: counts and fingerprints only, never values. **Still open, and worth a
+   design decision first** — telemetry from a security tool needs an explicit privacy story and
+   someone to own the endpoint, so it should not be rushed before the pitch.
 
 **Evidence we still lack**
 7. A pilot install on a handful of real internal repos to get a true false-positive rate. Every

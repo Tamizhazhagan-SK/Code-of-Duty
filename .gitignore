@@ -15,6 +15,9 @@ models/
 *.gguf
 *.bin
 
+# NOTE: .zerotrace-exceptions.json IS committed on purpose - an exception silences a
+# security control, so it belongs in a reviewed pull request (fingerprints only, no values).
+
 # --- ZeroTrace local state ---
 .zerotrace-cache/
 .zerotrace/

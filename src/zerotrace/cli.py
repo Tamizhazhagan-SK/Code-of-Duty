@@ -14,9 +14,15 @@ from .collectors import staged_diff
 from .config import load_config
 
 COMMANDS = ("run", "review", "scan", "pre-push", "init", "install", "uninstall", "doctor", "ui",
+            "exceptions",
             "eval", "gateway", "version")
 _MAX_PUSH_COMMITS = 300
 _SHA_RE = re.compile(r"\A[0-9a-f]{40,64}\Z")
+
+
+def audit_exceptions_file() -> str:
+    from .audit.exceptions import SHARED_FILE
+    return SHARED_FILE
 
 
 def _record_decision(decision, extra: dict | None = None) -> None:
@@ -288,6 +294,40 @@ def doctor_cmd(args) -> int:
     return doctor(pin_model=args.pin_model, warm=args.warm)
 
 
+def exceptions_cmd(args) -> int:
+    from rich.console import Console
+    from rich.table import Table
+
+    from .audit import exceptions as audit_exceptions
+    from .ui.glyphs import box_for
+    console = Console()
+
+    if args.promote:
+        moved, path = audit_exceptions.promote()
+        print(f"zerotrace: moved {moved} exception(s) into {os.path.basename(path)} - "
+              "commit it so a reviewer sees the reason and the expiry.")
+        return 0
+    if args.prune:
+        print(f"zerotrace: removed {audit_exceptions.prune()} expired exception(s).")
+        return 0
+
+    rows = audit_exceptions.listing()
+    if not rows:
+        print("zerotrace: no exceptions recorded.")
+        return 0
+    table = Table(title="Exceptions", box=box_for(console))
+    for column in ("scope", "fingerprint", "expires", "state", "reason"):
+        table.add_column(column, overflow="fold")
+    for row in rows:
+        state = "[green]active[/]" if row["active"] else "[dim]expired[/]"
+        table.add_row(row["scope"], row["fingerprint"][:12], row["expires_at"][:10], state,
+                      row["reason"])
+    console.print(table)
+    console.print("[dim]`--promote` moves local exceptions into the committed, reviewable "
+                  "file; `--prune` drops expired ones.[/]")
+    return 0
+
+
 def ui_cmd(args) -> int:
     from .ui.preview import run
     return run(args.tier)
@@ -355,6 +395,12 @@ def _parser() -> argparse.ArgumentParser:
     d.add_argument("--fix", action="store_true",
                    help="patch this repo's local hook override (e.g. husky) that defeats the global install")
 
+    x = sub.add_parser("exceptions", help="list, promote or prune approved exceptions")
+    x_group = x.add_mutually_exclusive_group()
+    x_group.add_argument("--promote", action="store_true",
+                         help=f"move local exceptions into {audit_exceptions_file()} for review")
+    x_group.add_argument("--prune", action="store_true", help="drop expired exceptions")
+
     u = sub.add_parser("ui", help="render every screen so you can check this terminal")
     u.add_argument("--tier", choices=["auto", "unicode", "ascii", "text", "all"], default="auto",
                    help="force a logo/render tier (default: auto-detect)")
@@ -387,7 +433,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "version":
         print(f"zerotrace {__version__}")
         raise SystemExit(0)
-    repo_commands = {"run", "review", "scan", "pre-push", "init"}
+    repo_commands = {"run", "review", "scan", "pre-push", "init", "exceptions"}
     if args.command in repo_commands:
         if not gitutil.in_repo():
             print("zerotrace: not inside a git repository", file=sys.stderr)
@@ -397,6 +443,7 @@ def main(argv: list[str] | None = None) -> None:
     handlers = {
         "run": run, "review": review, "scan": scan, "pre-push": pre_push, "init": init,
         "install": install_cmd, "uninstall": uninstall_cmd, "doctor": doctor_cmd, "ui": ui_cmd,
+        "exceptions": exceptions_cmd,
         "eval": eval_cmd, "gateway": gateway_cmd,
     }
     try:

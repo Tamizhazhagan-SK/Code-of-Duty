@@ -3,7 +3,7 @@ import pytest
 
 from zerotrace.collectors.staged_diff import Unit, classify_file
 from zerotrace.config import Config
-from zerotrace.detectors import code_assign, pii, rulepack, sensitive_files
+from zerotrace.detectors import code_assign, composed, pii, rulepack, sensitive_files
 from zerotrace.pipeline import postprocess
 
 from .conftest import Fake, rand
@@ -276,3 +276,58 @@ def test_regex_patterns_are_not_credentials():
     assert _scan("v.py", 'PASSWORD_PATTERN = r"^(?=.*[A-Z])(?=.*\\d).{12,}$"') == []
     assert _scan("v.js", 'const tokenRegex = /[A-Za-z0-9]{32}/;') == []
     assert _scan("app.py", f'api_secret = "{rand(26)}9aZ"')      # still caught
+
+
+# --- secrets assembled from parts -----------------------------------------------------
+
+def _scan_lines(path: str, lines: list[str]):
+    units = [Unit(path=path, file_class=classify_file(path), line_no=i + 1, text=text,
+                  window="\n".join(lines)) for i, text in enumerate(lines)]
+    return postprocess(
+        rulepack.scan(units, Config()) + code_assign.scan(units, Config())
+        + composed.scan(units, Config()), Config())
+
+
+def test_secret_split_across_two_lines_is_caught():
+    key = Fake.stripe_live()
+    findings = _scan_lines("pay.py", [f'part_a = "{key[:17]}"', f'part_b = "{key[17:]}"',
+                                      "stripe_key = part_a + part_b"])
+    assert [f.rule_id for f in findings] == ["composed-stripe-live-key"]
+    assert findings[0].severity == "critical"
+    assert findings[0].matched_value == key
+
+
+def test_secret_split_on_one_line_is_caught():
+    key = Fake.github()
+    (finding,) = _scan_lines("app.py", [f'token = "{key[:10]}" + "{key[10:]}"'])
+    assert finding.rule_id == "composed-github-token"
+
+
+def test_generic_parts_on_a_credential_name_are_caught():
+    left, right = rand(16), rand(16)
+    (finding,) = _scan_lines("auth.py", [f'left = "{left}"', f'right = "{right}"',
+                                         "client_secret = left + right"])
+    assert finding.rule_id == "composed-secret" and finding.severity == "high"
+
+
+@pytest.mark.parametrize("lines", [
+    ['greeting = "hello " + name'],
+    ['config_path = base_dir + "/config.yml"'],
+    ['url = "https://api." + host + "/v1"'],
+    ['message = "Deploy " + env + " finished"'],
+    ['query = "SELECT * FROM " + table'],
+    ['token = header + "." + payload'],                      # operands unknown: never guess
+])
+def test_ordinary_string_building_is_not_flagged(lines):
+    assert _scan_lines("app.py", lines) == []
+
+
+def test_composed_finding_asks_for_a_manual_fix():
+    from zerotrace.policy.engine import Decision
+    from zerotrace.remediation import proposer
+    key = Fake.stripe_live()
+    (finding,) = _scan_lines("pay.py", [f'a = "{key[:17]}"', f'b = "{key[17:]}"',
+                                        "stripe_key = a + b"])
+    proposal = proposer.propose(Decision("block", "critical", "", finding), "reference", Config())
+    assert proposal.mode == "manual" and proposal.new_line is None
+    assert "rotate" in proposal.note.lower()

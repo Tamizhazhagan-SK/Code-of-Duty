@@ -16,6 +16,9 @@ fully unit-tested.
 Modifiers:
 - **Test/docs paths** lower heuristic findings one level. Provider formats and PII stay.
 - **Exceptions** (`[E]`) are time-bound (`exceptions.ttl_days`), need a reason, and are scoped to
-  the exact line (they auto-expire if the line changes).
+  the exact line (they auto-expire if the line changes). They are written locally first
+  (`.git/zerotrace/`), then promoted into the committed, PR-reviewed
+  `.zerotrace-exceptions.json` with `zerotrace exceptions --promote`. Both stores hold
+  fingerprints only, never values, and `zerotrace exceptions --prune` drops expired entries.
 - **`.secrets.baseline`** (hashed) suppresses reviewed pre-existing values for every detector.
 - `critical` is always in `block_severity`, and org policy can lock the rest.
