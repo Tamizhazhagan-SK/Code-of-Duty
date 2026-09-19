@@ -4,7 +4,7 @@
 
 Writes into src/zerotrace/ui/assets/:
   logo.png        optimized copy, sent as-is via the Kitty/iTerm2 image protocols
-  mark.uni.txt    the mark as a Unicode shading ramp (" ░▒▓█"), one char per cell
+  mark.uni.txt    the mark in Unicode half-blocks (▀▄█), two samples per cell
   mark.ascii.txt  the same mark as an ASCII density ramp (" .:-=+*#%@")
   mark.small.*    the same two at a narrower width, for 60-column terminals
 
@@ -36,7 +36,8 @@ _SHADE_RAMP = " ░▒▓█"            # lightest -> darkest; all four exist i
 _ASCII_RAMP = " .:-=+*#%@"       # the classic density ramp
 
 
-def coverage(img: Image.Image, width: int, supersample: int = 4) -> list[list[float]]:
+def coverage(img: Image.Image, width: int, supersample: int = 4,
+             rows_per_cell: int = 1) -> list[list[float]]:
     """Per-cell ink coverage in 0..1, computed by supersampling then averaging.
 
     "Ink" is opaque *and* dark: the mark is a black silhouette whose white details are
@@ -48,7 +49,7 @@ def coverage(img: Image.Image, width: int, supersample: int = 4) -> list[list[fl
     if bbox:
         img = img.crop(bbox)
     src_w, src_h = img.size
-    rows = max(round(src_h * width / src_w / _CELL_ASPECT), 1)
+    rows = max(round(src_h * width / src_w / _CELL_ASPECT) * rows_per_cell, 1)
 
     fine = img.resize((width * supersample, rows * supersample), Image.LANCZOS)
     pixels = fine.load()
@@ -82,20 +83,95 @@ def _ramp_art(grid: list[list[float]], ramp: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def to_shaded(grid: list[list[float]]) -> str:
-    """Unicode shading ramp. All four blocks are CP437 characters, so this also renders
-    on a legacy Windows console once the codepage is UTF-8 or 437."""
-    return _ramp_art(grid, _SHADE_RAMP)
+def to_halfblocks(img: Image.Image, width: int, cutoff: float = 0.45) -> str:
+    """Crisp Unicode art: two vertical samples per cell via ▀ ▄ █.
+
+    A shading ramp dithers edges and reads as noise at logo size; half-blocks double the
+    vertical resolution and keep the silhouette sharp, which is what a mark needs.
+    """
+    grid = coverage(img, width, supersample=2, rows_per_cell=2)
+    lines = []
+    for y in range(0, len(grid), 2):
+        top = grid[y]
+        bottom = grid[y + 1] if y + 1 < len(grid) else [0.0] * len(top)
+        line = "".join(
+            "█" if t >= cutoff and b >= cutoff else
+            "▀" if t >= cutoff else
+            "▄" if b >= cutoff else " "
+            for t, b in zip(top, bottom, strict=False)
+        )
+        lines.append(line.rstrip())
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines) + "\n"
 
 
 def to_ascii(grid: list[list[float]]) -> str:
     return _ramp_art(grid, _ASCII_RAMP)
 
 
+_PAGE = (245, 245, 245)     # the card the mark is printed on
+_MARK = (16, 16, 16)        # the silhouette itself
+
+
+def to_card_ansi(img: Image.Image, width: int, cutoff: float = 0.5) -> str:
+    """The logo as designed: dark silhouette on a light card, using fg+bg colour.
+
+    A terminal cell can hold two colours (foreground and background), so "▀" paints the top
+    half in the foreground colour and the bottom half in the background colour. That gives
+    both the square pixels of a half-block render *and* the real artwork: the white cut-outs
+    (eyes, mouth, beard) stay white instead of becoming holes in a white blob.
+    """
+    img = img.convert("RGBA")
+    bbox = img.getchannel("A").getbbox()
+    if bbox:
+        img = img.crop(bbox)
+    src_w, src_h = img.size
+    rows = max(round(src_h * width / src_w / _CELL_ASPECT) * 2, 2)
+    small = img.resize((width, rows), Image.LANCZOS)
+    pixels = small.load()
+
+    def colour(x: int, y: int) -> tuple[int, int, int]:
+        r, g, b, a = pixels[x, y]
+        if a < _OPAQUE:
+            return _PAGE                     # outside the artwork: still part of the card
+        luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return _MARK if luma < 140 else _PAGE
+
+    lines = []
+    for y in range(0, rows, 2):
+        parts: list[str] = []
+        current: tuple | None = None          # emit an escape only when the pair changes
+        for x in range(width):
+            top = colour(x, y)
+            bottom = colour(x, y + 1) if y + 1 < rows else _PAGE
+            if (top, bottom) != current:
+                parts.append(f"\033[38;2;{top[0]};{top[1]};{top[2]};"
+                             f"48;2;{bottom[0]};{bottom[1]};{bottom[2]}m")
+                current = (top, bottom)
+            parts.append("▀")
+        lines.append("".join(parts) + "\033[0m")
+    return "\n".join(lines) + "\n"
+
+
 def write_png(img: Image.Image) -> None:
-    copy = img.convert("RGBA")
-    copy.thumbnail((_PNG_MAX_SIDE, _PNG_MAX_SIDE), Image.LANCZOS)
-    copy.save(ASSETS / "logo.png", optimize=True)
+    """Composite onto the same light card before shipping it.
+
+    The source is a dark silhouette on transparency, so an inline image with its alpha intact
+    is invisible on a dark terminal - the exact problem the card rendering solves for the text
+    tiers.
+    """
+    art = img.convert("RGBA")
+    bbox = art.getchannel("A").getbbox()
+    if bbox:
+        art = art.crop(bbox)
+    art.thumbnail((_PNG_MAX_SIDE, _PNG_MAX_SIDE), Image.LANCZOS)
+    margin = 12
+    card = Image.new("RGBA", (art.width + margin * 2, art.height + margin * 2), (*_PAGE, 255))
+    card.alpha_composite(art, (margin, margin))
+    card.convert("RGB").save(ASSETS / "logo.png", optimize=True)
 
 
 def main(argv: list[str]) -> int:
@@ -110,8 +186,9 @@ def main(argv: list[str]) -> int:
         return 2
 
     img = Image.open(source)
-    grid = coverage(img, width)
-    for name, text in (("mark.uni.txt", to_shaded(grid)), ("mark.ascii.txt", to_ascii(grid))):
+    for name, text in (("mark.uni.txt", to_halfblocks(img, width)),
+                       ("mark.card.ans", to_card_ansi(img, width)),
+                       ("mark.ascii.txt", to_ascii(coverage(img, width)))):
         (ASSETS / name).write_text(text, encoding="utf-8", newline="\n")
         print(f"wrote {name}: {len(text.splitlines())} lines x {width} cols")
     write_png(img)

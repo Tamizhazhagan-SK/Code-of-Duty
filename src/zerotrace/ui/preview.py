@@ -18,7 +18,7 @@ from ..policy.engine import Decision
 from . import capability, logo, terminal
 from .progress import Bar
 
-_TIERS = ("auto", "unicode", "ascii", "text")
+_TIERS = ("auto", "png", "card", "unicode", "ascii", "text")
 
 
 def _sample_decisions() -> list[Decision]:
@@ -54,7 +54,7 @@ def _capabilities(console: Console) -> Table:
         ("colour system", str(console.color_system)),
         ("stdout encoding", str(getattr(sys.stdout, "encoding", "?"))),
         ("unicode art", str(capability.supports_unicode(console))),
-        ("inline images", str(capability.supports_image(console))),
+        ("inline images", capability.why_no_image(console)),
         ("decorations allowed", str(capability.decorations_allowed())),
     ]
     env = {k: os.environ.get(k) for k in

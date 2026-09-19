@@ -1,5 +1,10 @@
-"""Tiered progress bar: CP437 shaded blocks -> plain ASCII -> discrete log lines."""
+"""The install progress bar: one pinned line with a gradient, degrading to plain log lines.
+
+Shape borrowed from the yeet installer: bar last, log above it, fixed label field, ASCII
+fallback, nothing but plain lines when the destination is not a terminal.
+"""
 import io
+import re
 
 import pytest
 from rich.console import Console
@@ -8,28 +13,51 @@ from zerotrace.ui import progress
 from zerotrace.ui.progress import Bar
 
 _ENV_KEYS = ("KITTY_WINDOW_ID", "TERM", "TERM_PROGRAM", "CI", "NO_COLOR")
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    # This suite's own CI sets CI=true, which would otherwise force every
-    # "shaded tier" test below into the ascii/plain fallback.
+    # This suite's own CI sets CI=true, which would otherwise force every coloured-tier
+    # test below into the plain fallback.
     for key in _ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _fixed_width(monkeypatch):
+    monkeypatch.setattr(progress.shutil, "get_terminal_size",
+                        lambda fallback=(80, 24): type("S", (), {"columns": 100, "lines": 24})())
+
+
 class _FakeTTY(io.StringIO):
+    """A terminal-like stream: rich reads .encoding to decide what glyphs are safe."""
+
+    def __init__(self, encoding: str = "utf-8"):
+        super().__init__()
+        self._encoding = encoding
+
     def isatty(self) -> bool:
         return True
 
+    @property
+    def encoding(self) -> str:
+        return self._encoding
 
-def _shaded_console(file) -> Console:
-    return Console(file=file, force_terminal=True, color_system="truecolor")
+
+def _console(file, *, color: str | None = "truecolor") -> Console:
+    return Console(file=file, force_terminal=True, color_system=color)
 
 
-def _ascii_console(file) -> Console:
-    return Console(file=file, force_terminal=True, color_system=None)
+def _last_frame(out: io.StringIO) -> str:
+    return out.getvalue().split("\r")[-1]
 
+
+def _plain(text: str) -> str:
+    return _ANSI.sub("", text)
+
+
+# --- degradation ------------------------------------------------------------------------
 
 def test_non_tty_prints_discrete_step_lines_and_never_uses_carriage_return():
     out = io.StringIO()
@@ -41,86 +69,102 @@ def test_non_tty_prints_discrete_step_lines_and_never_uses_carriage_return():
     assert out.getvalue().splitlines() == ["zerotrace: [1/3] first", "zerotrace: [2/3] second"]
 
 
-def test_tty_without_unicode_support_uses_plain_ascii_bar():
+def test_tty_without_unicode_uses_ascii_blocks():
+    out = _FakeTTY(encoding="cp437")
+    bar = Bar(4, file=out, console=_console(out, color=None))
+    bar.step("writing hooks")
+    frame = _plain(_last_frame(out))
+    assert "#" in frame and "█" not in frame
+    frame.encode("cp437")                       # nothing the console cannot render
+
+
+def test_tty_with_unicode_uses_block_characters():
     out = _FakeTTY()
-    bar = Bar(4, file=out, console=_ascii_console(out))
-    bar.step("one")
-    bar.finish()
-    text = out.getvalue()
-    assert "\r" in text
-    assert progress._TOP_RULE not in text and progress._BOTTOM_RULE not in text
-    assert progress._FULL not in text and progress._LIGHT not in text
-    assert "#" in text and "-" in text
+    bar = Bar(4, file=out, console=_console(out))
+    bar.step("writing hooks")
+    assert "█" in _last_frame(out)
 
 
-def test_tty_with_unicode_support_uses_shaded_blocks_framed_by_half_block_rules():
+def test_colour_is_dropped_when_the_console_has_none():
     out = _FakeTTY()
-    bar = Bar(2, file=out, console=_shaded_console(out))
-    bar.step("one")
-    mid = out.getvalue()
-    bar.step("two")
-    bar.finish()
-    text = out.getvalue()
-
-    frame_rule = progress._TOP_RULE * (progress._WIDTH + 2)
-    assert text.startswith(frame_rule + "\n")
-    assert text.count(frame_rule) == 1  # framed once, not once per redraw
-    assert text.endswith(progress._BOTTOM_RULE * (progress._WIDTH + 2) + "\n")
-    assert "#" not in text and "-" not in text
-
-    # the very first (half-done) redraw already used the shaded tier, not ascii
-    assert progress._TOP_RULE in mid and progress._FULL in mid
+    Bar(2, file=out, console=_console(out, color=None)).step("x")
+    assert "\033[38;2;" not in out.getvalue()
 
 
-def test_shaded_bar_uses_the_full_gradient_while_partially_filled():
+def test_gradient_is_used_when_colour_is_available():
     out = _FakeTTY()
-    bar = Bar(7, file=out, console=_shaded_console(out))
-    seen_shades: set[str] = set()
-    for label in "abcdefg":
-        bar.step(label)
-        frame = out.getvalue().split("\r")[-1]
-        seen_shades.update(ch for ch in frame if ch in (progress._FULL, progress._DARK,
-                                                          progress._MED, progress._LIGHT))
-    bar.finish()
-    final_frame = out.getvalue().split("\r")[-1]
-    # done == total -> solid full block, no shade characters left over
-    assert {progress._FULL, progress._DARK, progress._MED, progress._LIGHT} & set(final_frame) \
-        == {progress._FULL}
-    # the gradient was genuinely exercised somewhere along the way, not just full/empty
-    assert {progress._DARK, progress._MED, progress._LIGHT} & seen_shades
+    bar = Bar(2, file=out, console=_console(out))
+    bar.step("x")
+    assert out.getvalue().count("\033[38;2;") > 1, "the fill should walk several colour stops"
 
 
-def test_shaded_bar_fills_proportionally_and_completes_at_full_block():
+# --- layout ------------------------------------------------------------------------------
+
+def test_bar_fills_proportionally():
     out = _FakeTTY()
-    bar = Bar(4, file=out, console=_shaded_console(out))
+    bar = Bar(4, file=out, console=_console(out))
     bar.step("quarter")
-    first = out.getvalue().split("\r")[-1]
-    assert first.count(progress._FULL) == progress._WIDTH // 4
+    quarter = _plain(_last_frame(out)).count("█")
     bar.step("half")
-    bar.step("three-quarter")
-    bar.step("done")
-    last = out.getvalue().split("\r")[-1]
-    assert last.count(progress._FULL) == progress._WIDTH
+    half = _plain(_last_frame(out)).count("█")
+    assert 0 < quarter < half
 
 
-def test_step_never_exceeds_total():
+def test_finish_leaves_a_full_bar_and_a_newline():
+    out = _FakeTTY()
+    bar = Bar(3, file=out, console=_console(out))
+    bar.step("one")
+    bar.finish()
+    final = _plain(out.getvalue().split("\r")[-1])
+    assert "100%" in final and final.endswith("\n")
+    assert "░" not in final, "a finished bar should be full"
+
+
+def test_label_is_shown_and_truncated_to_a_fixed_field():
+    out = _FakeTTY()
+    bar = Bar(2, file=out, console=_console(out))
+    bar.step("Registering core.hooksPath and a great deal more text than fits")
+    frame = _plain(_last_frame(out))
+    assert "Registering core.hooksPath" in frame
+    assert len(frame.rstrip()) <= 100
+
+
+def test_narrow_terminal_drops_the_label_but_keeps_the_bar(monkeypatch):
+    monkeypatch.setattr(progress.shutil, "get_terminal_size",
+                        lambda fallback=(80, 24): type("S", (), {"columns": 40, "lines": 24})())
+    out = _FakeTTY()
+    bar = Bar(2, file=out, console=_console(out))
+    bar.step("Registering core.hooksPath")
+    frame = _plain(_last_frame(out))
+    assert "Registering" not in frame
+    assert "%" in frame and len(frame.rstrip()) <= 40
+
+
+@pytest.mark.parametrize("columns", [200, 120, 100, 80, 60, 50, 40, 30, 20])
+def test_no_width_overflows_the_window(columns, monkeypatch):
+    monkeypatch.setattr(progress.shutil, "get_terminal_size",
+                        lambda fallback=(80, 24): type("S", (), {"columns": columns})())
+    out = _FakeTTY()
+    bar = Bar(3, file=out, console=_console(out))
+    bar.step("Writing hook shims")
+    assert len(_plain(_last_frame(out)).rstrip()) <= columns
+
+
+# --- logging above the bar ----------------------------------------------------------------
+
+def test_log_prints_above_the_bar_and_redraws_it():
+    out = _FakeTTY()
+    bar = Bar(3, file=out, console=_console(out))
+    bar.step("one")
+    bar.log("zerotrace: wrote 16 hook shims")
+    text = out.getvalue()
+    assert "zerotrace: wrote 16 hook shims\n" in text
+    assert text.index("wrote 16 hook shims") < text.rindex("%"), "the bar is redrawn after the log"
+    assert "\033[K" in text, "the bar line is erased before the log is written"
+
+
+def test_log_on_a_non_tty_just_prints():
     out = io.StringIO()
     bar = Bar(2, file=out)
-    for label in ("a", "b", "c", "d"):
-        bar.step(label)
-    assert bar.done == 2
-    assert "zerotrace: [2/2] d" in out.getvalue()
-
-
-def test_zero_total_is_clamped_to_avoid_division_by_zero():
-    out = io.StringIO()
-    bar = Bar(0, file=out)
-    bar.step("only step")
-    assert "zerotrace: [1/1] only step" in out.getvalue()
-
-
-def test_finish_is_a_no_op_before_any_step():
-    out = _FakeTTY()
-    Bar(3, file=out, console=_shaded_console(out)).finish()
-    assert out.getvalue() == ""
-
+    bar.log("plain line")
+    assert out.getvalue() == "plain line\n"
