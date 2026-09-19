@@ -2,18 +2,22 @@
 
 Tiers, richest-supported-first:
   1. png     inline image via the Kitty or iTerm2 graphics protocol
-  2. unicode shaded mark (`mark*.uni.txt`, a " ░▒▓█" ramp) + wordmark, drawn in white
-  3. ascii   the same composition from `mark*.ascii.txt`; safe on cp437/cp1252 consoles
-  4. text    just the wordmark lines, when the terminal is too narrow for any mark
+  2. card    the artwork as designed - dark silhouette on a light card - using a terminal
+             cell's two colours (fg + bg) per half block, so the white cut-outs that make
+             the face readable stay white instead of becoming holes in a white blob
+  3. unicode monochrome half-block silhouette, for a UTF-8 terminal without truecolour
+  4. ascii   density-ramp art; safe on cp437/cp1252 consoles
+  5. text    just the wordmark lines, when the terminal is too narrow for any mark
 
-Auto-detected, or forced with ZEROTRACE_LOGO=png|unicode|ascii|text|off. CI and NO_COLOR
-drop to the ascii tier, and a redirected/non-tty destination never gets image escapes.
+Auto-detected, or forced with ZEROTRACE_LOGO=png|card|unicode|ascii|text|off. CI and
+NO_COLOR drop to ascii, and a redirected/non-tty destination never gets image escapes.
 
 Assets are generated offline by scripts/render_logo_assets.py (needs Pillow); nothing
 here imports an image library, because this runs on every commit.
 """
 import base64
 import os
+import re
 from importlib import resources
 
 from rich.console import Console
@@ -25,6 +29,7 @@ _ENV_VAR = "ZEROTRACE_LOGO"
 _CHUNK = 4096            # bytes of base64 per Kitty graphics-protocol chunk
 _GUTTER = "   "
 _WHITE, _RESET = "\033[1;97m", "\033[0m"
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 _WORDMARK = "ZEROTRACE"
 _TAGLINE = ("secret & PII guardrail", "commits · AI agents · local-first",
@@ -90,6 +95,15 @@ def _text_lines(width: int, ascii_only: bool = False) -> list[str]:
     return [_WORDMARK, "", *[line for line in tagline if len(line) <= width]]
 
 
+def _supports_card(console: Console) -> bool:
+    """Truecolour is needed: the card is two 24-bit colours per cell."""
+    return (capability.supports_unicode(console) and console.color_system == "truecolor")
+
+
+def _visible_width(line: str) -> int:
+    return len(_ANSI_RE.sub("", line))
+
+
 def _mark_lines(name: str) -> list[str]:
     art = _read_text(name)
     if art is None:
@@ -106,7 +120,7 @@ def _compose(mark: list[str], right: list[str]) -> list[str]:
     """Mark on the left, right-hand block vertically centred against it."""
     if not mark:
         return right
-    mark_width = max((len(line) for line in mark), default=0)
+    mark_width = max((_visible_width(line) for line in mark), default=0)
     height = max(len(mark), len(right))
     top_mark = (height - len(mark)) // 2
     top_right = (height - len(right)) // 2
@@ -115,7 +129,8 @@ def _compose(mark: list[str], right: list[str]) -> list[str]:
     for i in range(height):
         left = mark[i - top_mark] if top_mark <= i < top_mark + len(mark) else ""
         text = right[i - top_right] if top_right <= i < top_right + len(right) else ""
-        out.append((left.ljust(mark_width) + _GUTTER + text).rstrip())
+        pad = " " * max(0, mark_width - _visible_width(left))
+        out.append((left + pad + _GUTTER + text).rstrip())
     return out
 
 
@@ -123,22 +138,23 @@ def _paint(lines: list[str], console: Console) -> str:
     body = "\n".join(lines)
     if console.color_system is None or not capability.decorations_allowed():
         return body + "\n"
-    return "\n".join(f"{_WHITE}{line}{_RESET}" for line in lines) + "\n"
+    painted = [line if "\033[" in line else f"{_WHITE}{line}{_RESET}" for line in lines]
+    return "\n".join(painted) + "\n"
 
 
-def _composition(console: Console, unicode_tier: bool) -> list[str]:
+def _composition(console: Console, unicode_tier: bool, card: bool = False) -> list[str]:
     """Widest layout the terminal can take: big mark + block wordmark, down to text only."""
     width = console.width or 80
-    suffix = "uni" if unicode_tier else "ascii"
-    big = _mark_lines(f"mark.{suffix}.txt")
-    small = _mark_lines(f"mark.small.{suffix}.txt")
-    big_width = max((len(line) for line in big), default=0)
-    small_width = max((len(line) for line in small), default=0)
+    suffix = "card.ans" if card else ("uni.txt" if unicode_tier else "ascii.txt")
+    big = _mark_lines(f"mark.{suffix}")
+    small = _mark_lines(f"mark.small.{suffix}")
+    big_width = max((_visible_width(line) for line in big), default=0)
+    small_width = max((_visible_width(line) for line in small), default=0)
     block = _block_wordmark()
     block_width = max(len(line) for line in block)
 
-    ascii_only = not unicode_tier
-    if big and unicode_tier and width >= big_width + len(_GUTTER) + block_width:
+    ascii_only = not unicode_tier and not card
+    if big and (unicode_tier or card) and width >= big_width + len(_GUTTER) + block_width:
         return _compose(big, block + ["", _TAGLINE[-1]])
     if big and width >= big_width + len(_GUTTER) + 24:
         return _compose(big, _text_lines(width - big_width - len(_GUTTER), ascii_only))
@@ -163,6 +179,11 @@ def render(console: Console) -> str | None:
     if forced == "text":
         return _paint(_text_lines(console.width or 80, not capability.supports_unicode(console)),
                       console)
+
+    if forced == "card" or (forced is None and _supports_card(console)):
+        lines = _composition(console, unicode_tier=True, card=True)
+        if any("\033[" in line for line in lines):
+            return _paint(lines, console)
 
     unicode_tier = forced == "unicode" or (forced is None and capability.supports_unicode(console))
     return _paint(_composition(console, unicode_tier), console)

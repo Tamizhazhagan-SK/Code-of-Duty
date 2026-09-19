@@ -267,13 +267,15 @@ def install_cmd(args) -> int:
         lines = installer.install("system" if args.system else "global", args.hooks_dir,
                                   on_step=bar.step)
     except (PermissionError, gitutil.GitError) as exc:
-        bar.finish()
+        bar.clear()
         print(f"zerotrace: install failed: {exc}", file=sys.stderr)
         return 1
-    bar.finish()
+    # Results scroll ABOVE the bar, so the finished 100% line stays at the bottom as the
+    # receipt that the install completed.
     for line in lines:
-        print(f"zerotrace: {line}")
-    print("zerotrace: every repo on this machine now runs ZeroTrace on commit and push.")
+        bar.log(f"zerotrace: {line}")
+    bar.log("zerotrace: every repo on this machine now runs ZeroTrace on commit and push.")
+    bar.finish()
     return 0
 
 
@@ -402,7 +404,8 @@ def _parser() -> argparse.ArgumentParser:
     x_group.add_argument("--prune", action="store_true", help="drop expired exceptions")
 
     u = sub.add_parser("ui", help="render every screen so you can check this terminal")
-    u.add_argument("--tier", choices=["auto", "unicode", "ascii", "text", "all"], default="auto",
+    u.add_argument("--tier", choices=["auto", "png", "card", "unicode", "ascii", "text", "all"],
+                   default="auto",
                    help="force a logo/render tier (default: auto-detect)")
 
     e = sub.add_parser("eval", help="measure the AI tie-break on labelled synthetic cases")

@@ -92,6 +92,9 @@ real commands use:
 
 ```bash
 zerotrace ui                 # auto-detect this console
+zerotrace ui --tier png      # force the inline image (Kitty/iTerm2 protocols)
+zerotrace ui --tier card     # the colour card rendering of the mark
+zerotrace ui --tier unicode  # monochrome half-block silhouette
 zerotrace ui --tier ascii    # what a legacy cmd.exe / cp437 console sees
 zerotrace ui --tier all      # every tier in one pass
 ```
@@ -101,7 +104,8 @@ What ZeroTrace does automatically:
 | Console | Behaviour |
 |---|---|
 | Windows Terminal, iTerm2, GNOME Terminal, VS Code, JetBrains | shaded Unicode mark, colour, rounded box borders |
-| Kitty, WezTerm, iTerm2 | inline PNG logo via the terminal's image protocol |
+| Kitty, WezTerm, Ghostty, iTerm2, Konsole | inline PNG logo via the terminal's image protocol |
+| any truecolour UTF-8 terminal | the mark as designed: dark silhouette on a light card (fg+bg per half block) |
 | legacy `cmd.exe`, PowerShell 5.1 (cp437/cp1252) | ASCII mark, ASCII box borders, `+`/`x` instead of `✓`/`✗` |
 | redirected output, CI logs, `NO_COLOR` | no colour, no image escapes, no in-place redraw |
 | narrow terminals (< 60 columns) | smaller mark, then wordmark only |
