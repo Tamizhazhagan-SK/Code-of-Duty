@@ -7,14 +7,14 @@ from dataclasses import replace
 
 from .collectors.staged_diff import Changeset
 from .detectors import SEVERITY_ORDER, Finding, downgrade
-from .detectors import code_assign, pii as pii_det, rulepack, secrets as secret_det
+from .detectors import code_assign, composed, pii as pii_det, rulepack, secrets as secret_det
 from .detectors import sensitive_files
 from .detectors.filters import (
     is_digest, is_hash_context, is_lockfile, is_placeholder, is_uuid, looks_like_prose,
 )
 from .policy.engine import Decision, decide
 
-_SOURCE_PRIORITY = {"sensitive_files": 5, "rulepack": 4, "code_assign": 3,
+_SOURCE_PRIORITY = {"sensitive_files": 5, "rulepack": 4, "composed": 4, "code_assign": 3,
                     "detect_secrets": 2, "pii": 1}
 _ENTROPY_ONLY = {"Base64 High Entropy String", "Hex High Entropy String"}
 
@@ -24,6 +24,7 @@ def detect(changeset: Changeset, cfg) -> list[Finding]:
     findings += sensitive_files.scan(changeset, cfg)
     findings += rulepack.scan(changeset.units, cfg)
     findings += code_assign.scan(changeset.units, cfg)
+    findings += composed.scan(changeset.units, cfg)
     findings += secret_det.scan(changeset, cfg)
     findings += pii_det.scan(changeset.units, cfg)
     return postprocess(findings, cfg)

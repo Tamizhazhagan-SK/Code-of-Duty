@@ -116,7 +116,8 @@ that depends on it becomes a silent, hard-to-diagnose no-op.
 
 ## 8. Governance and metrics (roadmap)
 
-- Commit exceptions as a reviewed file (fingerprints only) so they go through PR review.
+- **Done:** exceptions live in a committed, reviewable `.zerotrace-exceptions.json`
+  (`zerotrace exceptions`, `--promote`, `--prune`); fingerprints only, and every entry expires.
 - Opt-in fleet telemetry: counts of blocked/fixed findings by rule, never values, for a
   "leaks prevented" dashboard.
 - Signed releases and hash-locked dependencies, because a tool that reads every commit is itself

@@ -133,6 +133,12 @@ def _pii_proposal(finding, mode: str) -> Proposal:
 
 def propose(decision, mode: str = "reference", cfg=None) -> Proposal:
     finding = decision.finding
+    if finding.kind == "composed_secret":
+        # The value never appears verbatim on the line, so an automatic rewrite would be a
+        # guess. Say what to do instead.
+        return Proposal("manual", None, _env_name(finding),
+                        "Assembled from parts: rotate the credential, delete the pieces, and "
+                        f"read {_env_name(finding)} from the environment at run time.")
     if finding.line_no == 0 or finding.kind == "sensitive_file":
         return _unstage_proposal(finding)
     if finding.kind in _PII_SYNTHETIC:
