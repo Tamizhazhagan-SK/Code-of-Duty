@@ -98,7 +98,7 @@ escape the global install is flagged by `zerotrace doctor` and patched in place 
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | `zerotrace install --global` (`--system` for IT/MDM fleets) | the only install: every current and future repo on this machine                 |
 | `zerotrace run`                                               | what the pre-commit hook runs: staged diff, interactive fix when a TTY exists   |
-| `zerotrace review`                                            | fix a headless block (VS Code, GUI) interactively in a terminal                 |
+| `zerotrace review`                                            | fix a headless block (VS Code, GUI) interactively — full-screen when a terminal and `textual` are installed, the inline flow otherwise |
 | `zerotrace scan --range A..B` / `--all`                     | CI / PR backstop, onboarding scan (`--format json`)                           |
 | `zerotrace init`                                              | repo`.zerotrace.yml` + hashed `.secrets.baseline` for pre-existing findings |
 | `zerotrace doctor [--pin-model] [--warm]`                     | health check, model integrity pin, warm-up                                      |
@@ -148,6 +148,31 @@ call is sanitised rather than blocked outright, so agent workflows keep working.
 PII · `[U]` unstage + `.gitignore` + keys-only `.env.example` · `[E]` time-bound, reasoned
 exception · `[A]` abort. Fixes are written to the **index** and mirrored to the work tree
 only when the line matches, so unrelated unstaged edits are never swept into the commit.
+
+## Full-screen review
+
+`zerotrace review` opens a full-screen Textual app when a terminal is available and the `tui`
+extra is installed (`pip install "zerotrace[tui]"`, `textual>=0.80`): a findings table on the
+left, a detail pane on the right showing the proposed fix as a red/green diff, and a docked
+status line tracking how many findings are still open. Recording an `[E]` exception opens a
+modal that requires a written reason before it is saved.
+
+The same keys work in either case: `V` env-or-vault reference, `R` safe placeholder, `U` unstage
++ gitignore, `E` time-bound exception, `F` apply the `V` fix to every remaining finding that has
+one (it asks first, because several files change at once), `O` show only what is still open,
+`A` or `Q` leave, `j`/`k` or the arrow keys to move, `?` for the full key list. After a fix the
+cursor moves to the next finding that still needs a decision. Leaving with anything open keeps
+the commit blocked — including `ctrl+q` — and it exits 0 only once every finding is resolved.
+
+Under 80 columns the two panes stack instead of sitting side by side, so a split IDE terminal
+is still usable.
+
+It falls back automatically to the inline flow above when there is no terminal, when `TERM` is
+`dumb`, or when `textual` is not installed, and `zerotrace review --classic` forces the inline
+flow. The git pre-commit hook
+deliberately keeps the inline flow rather than opening the full-screen app: Textual takes over
+the whole screen and costs a noticeable import on every start, a hook has to work when git gives
+it no terminal at all, and it must not repaint a developer's scrollback.
 
 ## Live demo
 

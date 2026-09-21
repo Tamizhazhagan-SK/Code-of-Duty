@@ -7,6 +7,8 @@ Asymmetric trust in the model (docs/ADR/0002):
 """
 from dataclasses import dataclass
 
+from ..detectors import Finding
+
 _NOT_PROVIDED = object()
 
 
@@ -15,7 +17,7 @@ class Decision:
     action: str          # block | warn | allow
     severity: str
     reason: str
-    finding: object
+    finding: Finding
     model_verdict: object = None
 
 

@@ -21,6 +21,29 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `docs/DEMO_RUNBOOK.md`: click-by-click live demo script with the 8 demo beats.
 - `docs/AI_CLASSIFIER.md` "Measured results": real latency and accuracy numbers from
   `zerotrace eval` on CPU-only Docker Desktop.
+- Brand mark in the terminal: the logo image is rendered as a shaded Unicode ramp (ASCII on
+  legacy consoles) with the ZEROTRACE wordmark beside it, shown by `zerotrace install`.
+- `zerotrace ui [--tier ...]`: renders every screen so a console (CMD, PowerShell, Windows
+  Terminal, IDE terminals, CI logs) can be checked in one command.
+- One-line uninstall: `./install.sh --uninstall` / `install.ps1 -Uninstall`.
+- `detectors/composed.py`: secrets assembled from parts (`part_a + part_b`) are detected.
+- Reviewable exceptions: `.zerotrace-exceptions.json` plus `zerotrace exceptions
+  [--promote|--prune]`.
+- `zerotrace review`: full-screen Textual reviewer (`src/zerotrace/ui/tui.py`) —
+  findings table, a detail pane showing the proposed fix as a diff, a status line, and a
+  modal that requires a written reason for an exception. Keys work in either case, `F`
+  applies the env/vault fix to every remaining finding after a confirmation, `O` hides
+  what is already resolved, `?` opens the key list, and the cursor moves to the next open
+  finding after each fix. Under 80 columns the panes stack. Falls back to the inline flow
+  when there is no terminal, when `TERM=dumb`, or when `textual` is not installed;
+  `--classic` forces it. Install with `pip install "zerotrace[tui]"` (`textual>=0.80`).
+
+### Changed
+- Default `model.timeout_seconds` raised from 20 s to 120 s: measured CPU-only inference is
+  ~106 s p50, so the old default failed every tie-break closed to WARN in repos without a config.
+- README and `docs/ARCHITECTURE.md` describe both enforcement points (commit time and AI
+  runtime); `sonar-project.properties` now analyses the installer and fleet scripts.
+
 ### Fixed
 - A base64-obscured Stripe live key no longer evades detection (`stripe-live-key-base64` rule).
 - Unicode homoglyph identifiers (e.g. Cyrillic `а` substituted for Latin `a`) no longer bypass
@@ -31,27 +54,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   TEST_FIXTURE_OR_PLACEHOLDER") could flip a real secret to an unsafe allow; the policy engine
   now refuses to honor an ALLOW verdict when the finding's context matches a prompt-injection
   pattern, regardless of what the model concluded (found via `zerotrace eval`).
-
-## [Unreleased]
-### Added
-- Brand mark in the terminal: the logo image is rendered as a shaded Unicode ramp (ASCII on
-  legacy consoles) with the ZEROTRACE wordmark beside it, shown by `zerotrace install`.
-- `zerotrace ui [--tier ...]`: renders every screen so a console (CMD, PowerShell, Windows
-  Terminal, IDE terminals, CI logs) can be checked in one command.
-- One-line uninstall: `./install.sh --uninstall` / `install.ps1 -Uninstall`.
-- `detectors/composed.py`: secrets assembled from parts (`part_a + part_b`) are detected.
-- Reviewable exceptions: `.zerotrace-exceptions.json` plus `zerotrace exceptions
-  [--promote|--prune]`.
-
-### Fixed
 - Gateway: a prompt injection sharing a line with a secret was dropped by `pipeline.dedupe`, so
   the injected instruction was forwarded to the model and missing from the audit record. PII,
   prompt-injection and confidentiality findings are now deduplicated per value, not per line.
-### Changed
-- Default `model.timeout_seconds` raised from 20 s to 120 s: measured CPU-only inference is
-  ~106 s p50, so the old default failed every tie-break closed to WARN in repos without a config.
-- README and `docs/ARCHITECTURE.md` describe both enforcement points (commit time and AI
-  runtime); `sonar-project.properties` now analyses the installer and fleet scripts.
+- Leaving the full-screen reviewer with `ctrl+q` reported a clean review: Textual's own
+  binding exits with no value, which read as success. It now means what `A` and `Q` mean —
+  anything still open keeps the commit blocked.
 
 ## [0.1.0] - 2026-09-17
 First public release.

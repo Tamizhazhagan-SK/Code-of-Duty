@@ -37,7 +37,7 @@ live end-to-end against the real model (see the demo-scripts row below and "What
 | A3 rule-pack/detector additions | ✅ done | `detectors/composed.py`, the `stripe-live-key-base64` rule, homoglyph normalization in `code_assign.py`, `classifier_hijack` in `prompt_injection.py` — each with a true-positive + placeholder-negative test |
 | A4 exceptions + fleet metrics | 🔶 half-done | Exceptions: done (`.zerotrace-exceptions.json`, `zerotrace exceptions --promote/--prune`, `tests/test_exceptions.py`). Fleet metrics: `docs/DEPLOYMENT.md` §8 still marks it "(roadmap)"; no code for it anywhere in `src/` |
 | A5 AWS inference endpoint | ⬜ not started | Still config-only in `docs/AWS_INFERENCE.md`, gated on Cloud Room access — nothing in the repo indicates that has arrived yet |
-| Extra (unplanned) | ✅ shipped | runtime AI gateway, one-command installers, WSL support, Apache-2.0 licence, v0.1.0, terminal logo/progress-bar branding |
+| Extra (unplanned) | ✅ shipped | runtime AI gateway, one-command installers, WSL support, Apache-2.0 licence, v0.1.0, terminal logo/progress-bar branding, full-screen Textual reviewer (`zerotrace review`, `tui` extra) with automatic fallback to the inline flow |
 
 ## 0. Both of us, before anything else (15 minutes)
 
