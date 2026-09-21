@@ -100,6 +100,24 @@ def _block_wordmark(big: bool = False) -> list[str]:
 
 
 _INVERT = str.maketrans({"▀": "▄", "▄": "▀", "█": " ", " ": "█"})
+_CARD_MARGIN = 2        # columns of card on each side of the mark
+
+
+def _centred(mark: list[str], margin: int = _CARD_MARGIN) -> list[str]:
+    """Crop to the columns the mark actually occupies, then pad both sides equally.
+
+    The asset keeps the source image's bounding box, which is not symmetric around the
+    silhouette (the artwork's outline sits inside it), so padding the raw lines leaves more
+    card on one side than the other.
+    """
+    width = max((len(line) for line in mark), default=0)
+    padded = [line.ljust(width) for line in mark]
+    columns = [x for line in padded for x, char in enumerate(line) if char != " "]
+    if not columns:
+        return padded
+    first, last = min(columns), max(columns)
+    gutter = " " * margin
+    return [gutter + line[first:last + 1] + gutter for line in padded]
 
 
 def _inverted_mask(mark: list[str]) -> list[str]:
@@ -109,9 +127,7 @@ def _inverted_mask(mark: list[str]) -> list[str]:
     silhouette itself white turns the face into a blob, because the cut-outs that carry the
     eyes, nose and beard become holes in that blob instead of light on a dark shape.
     """
-    width = max((len(line) for line in mark), default=0)
-    pad = 1
-    return [(" " * pad + line.ljust(width) + " " * pad).translate(_INVERT) for line in mark]
+    return [line.translate(_INVERT) for line in _centred(mark)]
 
 
 def _card_lines(mark: list[str], console: Console) -> list[str]:
@@ -128,9 +144,7 @@ def _card_lines(mark: list[str], console: Console) -> list[str]:
                  f"48;2;{_PAGE[0]};{_PAGE[1]};{_PAGE[2]}m")
     else:
         paint = "\033[38;5;232;48;5;255m"
-    width = max((len(line) for line in mark), default=0)
-    pad = 1                                   # a column of card either side of the mark
-    return [f"{paint}{' ' * pad}{line.ljust(width)}{' ' * pad}{_RESET}" for line in mark]
+    return [f"{paint}{line}{_RESET}" for line in _centred(mark)]
 
 
 def _ascii_safe(text: str) -> str:
