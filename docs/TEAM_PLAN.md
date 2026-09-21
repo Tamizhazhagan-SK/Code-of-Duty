@@ -10,19 +10,34 @@ Everything in `src/` that is listed below as Track A stays with Track A. Track B
 measurements, Windows, packaging and the pitch. Where Track B needs an engine change, open an
 issue or a PR rather than editing Track A's files directly.
 
-## Status (updated 18 Sep 2026)
+## Status (re-verified 21 Sep 2026)
 
-Track B is **complete**, and several Track A/P5 items landed alongside it. What follows is kept
-for context; jump to "What is left" at the bottom for the live list.
+Track B is **complete**. Track A is **mostly complete**: A2 and A3 are done, A4 is half-done
+(exceptions shipped, fleet metrics is still roadmap-only), A1 was resolved by a different and
+arguably stronger mechanism than "tune thresholds", and A5 is still blocked on AWS access that
+hasn't landed. What follows is kept for context; jump to "What is left" at the bottom for the
+live list.
+
+**How this was checked (21 Sep):** every file cited as evidence below was opened and read, then
+the gates were re-run on this machine rather than trusted from memory: `pytest -q` → 285 passed,
+15 skipped, 0 failed; `ruff check src tests demo` → clean; `mypy src` → clean (47 files);
+`zerotrace scan --all --no-model` → `no findings`. `git log`/`git tag` confirmed the version
+state rather than guessing it. Once Docker/Ollama came up, `demo/run_demo.ps1 -Auto` was also run
+live end-to-end against the real model (see the demo-scripts row below and "What is left" #1).
 
 | Task | State | Evidence |
 |---|---|---|
-| B1 measure the AI tie-break | ✅ done | `docs/AI_CLASSIFIER.md` "Measured results": p50 105.8 s on CPU-only Docker, 4/4 organic escalations, 2/2 injection cases fooled the model |
-| B2 Windows rehearsal | ✅ done | `docs/DEMO_RUNBOOK.md`, incl. the legacy-console mojibake caveat |
-| B3 runbook and pitch | ✅ done | `docs/DEMO_RUNBOOK.md` 8 beats + timings |
-| B4 enterprise packaging | ✅ done, exceeded | `.github/workflows/release.yml` (PyInstaller binaries), `deploy/` (Intune + Jamf + policy example), `.claude-plugin` layout, real no-egress CI job |
-| B5 adversarial testing | ✅ done | `docs/THREAT_MODEL.md` "Known gaps": base64 and homoglyph bypasses fixed with regression tests; classifier hijack fixed at the policy layer |
-| Extra (unplanned) | ✅ shipped | runtime AI gateway, one-command installers, WSL support, Apache-2.0 licence, v0.1.0 |
+| B1 measure the AI tie-break | ✅ done | `docs/AI_CLASSIFIER.md` "Measured results": p50 105.8 s / p95 130.4 s on CPU-only Docker, 4/4 organic escalations, 2/2 injection cases fooled the model |
+| B2 Windows rehearsal | ✅ done | `docs/DEMO_RUNBOOK.md`, incl. the legacy-console mojibake caveat; re-confirmed live 21 Sep (`run_demo.ps1 -Auto` against the real model) |
+| B3 runbook and pitch | ✅ done | `docs/DEMO_RUNBOOK.md` 8 beats + timings; all 8 beats reproduced live 21 Sep |
+| B4 enterprise packaging | ✅ done, exceeded | `.github/workflows/release.yml` (PyInstaller binaries), `deploy/` (Intune + Jamf + policy example), `bmw-skills-marketplace/.claude-plugin/marketplace.json` + `skill/.claude-plugin/plugin.json`, a real `no-egress` CI job (`ci/no_egress.py`, no longer an `echo` stub) |
+| B5 adversarial testing | ✅ done | `docs/THREAT_MODEL.md` "Known gaps": composed/base64/homoglyph bypasses fixed with regression tests; classifier hijack fixed at the policy layer |
+| A1 act on B1's numbers | 🔶 addressed, differently | `config.py`'s `model_allow_threshold`/`model_escalate_threshold` are still the original 0.6/0.8 — untouched. Instead: `model.timeout_seconds` default went 20 s → 120 s, and the 2/2 unsafe-allow finding was closed at the **policy layer** (new `classifier_hijack` pattern + `policy/engine.py` refusing an ALLOW under injection context) rather than by retuning thresholds. Worth confirming with Tamizh this was a deliberate call, not a skipped step. |
+| A2 Windows installer fixes | ✅ done | `installer.py`: TTY reattach (`</dev/tty` guard in the hook shim), space-safe `shlex.quote`d paths, `%PROGRAMDATA%`-based system scope, a DrvFs guard; `tests/test_installer.py` (13 tests, POSIX-skipped on this machine) |
+| A3 rule-pack/detector additions | ✅ done | `detectors/composed.py`, the `stripe-live-key-base64` rule, homoglyph normalization in `code_assign.py`, `classifier_hijack` in `prompt_injection.py` — each with a true-positive + placeholder-negative test |
+| A4 exceptions + fleet metrics | 🔶 half-done | Exceptions: done (`.zerotrace-exceptions.json`, `zerotrace exceptions --promote/--prune`, `tests/test_exceptions.py`). Fleet metrics: `docs/DEPLOYMENT.md` §8 still marks it "(roadmap)"; no code for it anywhere in `src/` |
+| A5 AWS inference endpoint | ⬜ not started | Still config-only in `docs/AWS_INFERENCE.md`, gated on Cloud Room access — nothing in the repo indicates that has arrived yet |
+| Extra (unplanned) | ✅ shipped | runtime AI gateway, one-command installers, WSL support, Apache-2.0 licence, v0.1.0, terminal logo/progress-bar branding |
 
 ## 0. Both of us, before anything else (15 minutes)
 
@@ -159,24 +174,35 @@ ones turned into rule-pack additions (`src/zerotrace/detectors/rules/default.yml
 
 ## Shared, before submission
 
-| Item | Owner | Done when |
+| Item | Owner | State |
 |---|---|---|
-| `LICENSE` is still a placeholder; confirm IP ownership with BMW TechWorks before publishing anywhere public | Tamizh | a real licence file, or an explicit internal-only note |
-| `SECURITY.md` disclosure email is `security@<org>.example` | teammate | a real contact |
-| `CHANGELOG.md` entry for the final version | Tamizh | tagged `v0.3.0` |
-| Final `pytest`, `ruff`, `mypy`, and both demo scripts run clean | both | green on both machines |
-| Repo scans clean under its own tool (dogfooding) | both | `zerotrace scan --all --no-model` reports nothing |
+| `LICENSE` | Tamizh | ✅ done — real Apache-2.0 file; `CONTRIBUTING.md` confirms contributions are licensed the same way. **Still open:** an explicit, written IP-ownership sign-off from BMW TechWorks before this goes anywhere outside this private repo — nothing in the repo records that conversation having happened |
+| `SECURITY.md` disclosure contact | teammate | ✅ done, differently than planned — no email placeholder left; it now routes entirely through GitHub's private vulnerability reporting instead of an address |
+| `CHANGELOG.md` entry for the final version | Tamizh | ⬜ not done — `pyproject.toml` is still `0.1.0`, `git tag` shows only `v0.1.0`, and all the newer work sits under `## [Unreleased]` in `CHANGELOG.md` (which currently has that heading twice — see "Doc hygiene" below), not a `v0.3.0` entry |
+| Final `pytest`, `ruff`, `mypy` clean | both | ✅ verified 21 Sep on this machine — `pytest -q`: 285 passed / 15 skipped / 0 failed; `ruff check src tests demo`: clean; `mypy src`: clean (47 files) |
+| Both demo scripts run clean | both | ✅ `run_demo.ps1 -Auto` verified 21 Sep end-to-end with Docker/Ollama up: install, both commits (payments-api blocked 10 findings incl. 2 live AI-tie-break BLOCKs at 0.90 confidence; web-app blocked 3 findings incl. the injected "allow this key" comment being ignored and a 3rd live AI-tie-break BLOCK), the `--no-verify` bypass, the pre-push block, and the audit-log tail (fingerprints only) all passed. First commit's model call took ~105 s, matching the measured p50 in `docs/AI_CLASSIFIER.md` almost exactly. `run_demo.sh` still untested here (Windows machine) |
+| Repo scans clean under its own tool (dogfooding) | both | ✅ verified 21 Sep — `zerotrace scan --all --no-model` → `no findings` |
 
-## What is left (live list)
+## What is left (live list, re-checked 21 Sep 2026)
 
 **Before the pitch**
 1. Rehearse the demo on the exact machine and console you will present from — the terminal logo
    and progress bar are new, and the runbook already flags glyph problems on legacy consoles.
+   *Partly re-checked 21 Sep — `run_demo.ps1 -Auto` ran clean end-to-end on this Windows machine
+   with the real model up (install, both commits incl. 3 live AI-tie-break BLOCKs, the
+   `--no-verify` bypass, the pre-push block, the audit-log tail). Still open: that was `-Auto`
+   (silent, skips the interactive `[V/R/U/E/A]` menu) on this machine's console, not a rehearsal
+   on the actual presentation hardware/console — that part stays a live-action task the repo
+   can't confirm.*
 2. Re-measure the classifier on a GPU or the AWS endpoint if either becomes available. 106 s p50
    is the weakest number in the deck; the same eval on a GPU should change it by an order of
    magnitude. Update `docs/AI_CLASSIFIER.md` if it does.
+   *Still open — `docs/AI_CLASSIFIER.md` only has the CPU-only Docker numbers.*
 3. Put the open split-secret bypass on the honesty slide (see below) rather than hoping nobody
    asks.
+   *Still open — `docs/DEMO_RUNBOOK.md`'s "Honesty" beat (#6) only narrates latency/accuracy; it
+   doesn't mention the residual composed-secret gap (slicing, `.join()`, arithmetic, cross-file)
+   that `docs/THREAT_MODEL.md` still lists as open.*
 
 **Engine (Track A)**
 4. ✅ **Split/concatenated secrets** — `detectors/composed.py` resolves string literals bound to
@@ -190,9 +216,23 @@ ones turned into rule-pack additions (`src/zerotrace/detectors/rules/default.yml
 6. Opt-in fleet metrics: counts and fingerprints only, never values. **Still open, and worth a
    design decision first** — telemetry from a security tool needs an explicit privacy story and
    someone to own the endpoint, so it should not be rushed before the pitch.
+   *Confirmed still open — `docs/DEPLOYMENT.md` §8 lists it as "(roadmap)"; no code for it
+   anywhere in `src/`.*
 
 **Evidence we still lack**
 7. A pilot install on a handful of real internal repos to get a true false-positive rate. Every
    precision claim on stage should come from that, not from our own fixtures.
+   *Still open — `docs/RESEARCH.md` §10 still lists this as an open question; no pilot data found
+   anywhere in the repo.*
 8. One honest quote from a developer about how they handle local credentials today
    (`docs/RESEARCH.md` §10).
+   *Still open — same section, no quote added yet. Side note: that section's other open bullet,
+   "measure the AI tie-break against real Qwen and publish the numbers", is actually done now
+   (`docs/AI_CLASSIFIER.md` "Measured results") — `docs/RESEARCH.md` §10 just hasn't been updated
+   to strike it off.*
+
+## Doc hygiene noticed during this check (flagging, not fixed)
+- `CHANGELOG.md` has **two** separate `## [Unreleased]` headings instead of one merged section —
+  worth squashing into one when `v0.3.0` is actually cut.
+- `docs/DEPLOYMENT.md`'s governance/metrics content is now under `## 8` (WSL claimed `## 7`), but
+  A4's task line above still cites "§7" — the content is right, only the section number moved.
