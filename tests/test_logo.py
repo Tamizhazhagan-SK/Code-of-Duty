@@ -27,8 +27,10 @@ def _plain(art: str) -> str:
 
 
 def _shows_the_name(art: str) -> bool:
-    """Either the plain wordmark, or the block-letter version used on wide terminals."""
-    return "ZEROTRACE" in art or logo._block_wordmark()[0] in art
+    """The plain wordmark, or either block-letter version used on wider terminals."""
+    return ("ZEROTRACE" in art
+            or logo._block_wordmark()[0] in art
+            or logo._block_wordmark(big=True)[0] in art)
 
 
 # --- tiers --------------------------------------------------------------------------
@@ -143,3 +145,63 @@ def test_missing_assets_degrade_to_the_wordmark(monkeypatch):
     monkeypatch.setattr(logo, "_read_bytes", lambda name: None)
     art = _plain(logo.render(_console()))
     assert art.splitlines()[0] == "ZEROTRACE"
+
+
+# --- the card rendering (the mark as designed: dark on a light card) --------------------
+
+def test_card_tier_paints_a_light_background(monkeypatch):
+    monkeypatch.setenv("ZEROTRACE_LOGO", "card")
+    art = logo.render(_console(width=120))
+    assert "\033[48;2;245;245;245m" in art or "48;2;245;245;245m" in art
+    assert "38;2;16;16;16" in art, "the silhouette is painted dark on the card"
+
+
+def test_card_tier_falls_back_to_256_colour(monkeypatch):
+    monkeypatch.setenv("ZEROTRACE_LOGO", "card")
+    art = logo.render(_console(width=120, color="256"))
+    assert "\033[38;5;232;48;5;255m" in art
+
+
+def test_card_is_used_automatically_on_a_colour_terminal():
+    art = logo.render(_console(width=120))
+    assert "48;2;" in art, "a colour UTF-8 terminal should get the card, not the mono mark"
+
+
+def test_no_color_drops_the_card(monkeypatch):
+    monkeypatch.setenv("NO_COLOR", "1")
+    art = logo.render(_console(width=120))
+    assert "48;2;" not in art
+
+
+def test_wide_terminals_get_the_broad_wordmark(monkeypatch):
+    monkeypatch.setenv("ZEROTRACE_LOGO", "unicode")
+    art = _plain(logo.render(_console(width=130)))
+    assert logo._block_wordmark(big=True)[0] in art
+    for glyph in "ZEROTRACE":
+        assert glyph in logo._FONT_BIG
+
+
+def test_ascii_tier_draws_the_outline_not_a_blob(monkeypatch):
+    """A filled ASCII silhouette is unreadable; the outline is the point of this tier."""
+    monkeypatch.setenv("ZEROTRACE_LOGO", "ascii")
+    art = _plain(logo.render(_console(width=110)))
+    lines = [line for line in art.splitlines() if line.strip()]
+    densest = max(line.count("@") for line in lines)
+    assert densest < 30, "the ASCII mark should be a line drawing, not a solid block"
+    assert "@" in art and "." in art
+
+
+def test_mono_tier_is_inverted_so_the_head_reads_as_the_artwork(monkeypatch):
+    """Without colour the page is filled and the silhouette is cut out of it: painting the
+    silhouette itself turns the face into a blob, because its white detail becomes holes."""
+    monkeypatch.setenv("ZEROTRACE_LOGO", "unicode")
+    lines = [line for line in _plain(logo.render(_console(width=130))).splitlines()
+             if "█" in line]
+    assert lines[0].startswith("█"), "the card is filled at the edges"
+    assert any(" " in line[:46] for line in lines), "and the mark is cut out of it"
+    # More page than mark, measured over the mark's own columns (the rest of the line is
+    # the wordmark and the gutter).
+    mark_columns = [line[:46] for line in lines]
+    filled = sum(line.count("█") for line in mark_columns)
+    empty = sum(line.count(" ") for line in mark_columns)
+    assert filled > empty

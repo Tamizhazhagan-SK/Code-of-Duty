@@ -31,11 +31,24 @@ _GUTTER = "   "
 _WHITE, _RESET = "\033[1;97m", "\033[0m"
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
+_MARK, _PAGE = (16, 16, 16), (245, 245, 245)
 _WORDMARK = "ZEROTRACE"
 _TAGLINE = ("secret & PII guardrail", "commits · AI agents · local-first",
             "no trace. no leaks. stays safe.")
 
-# 5-row block letters, only the glyphs ZEROTRACE needs.
+# 7-row block letters with two-cell strokes: the wordmark at its proper weight, used
+# whenever the terminal is wide enough to carry it.
+_FONT_BIG = {
+    "Z": ["███████", "     ██", "    ██ ", "   ██  ", "  ██   ", " ██    ", "███████"],
+    "E": ["███████", "██     ", "██     ", "██████ ", "██     ", "██     ", "███████"],
+    "R": ["██████ ", "██   ██", "██   ██", "██████ ", "██  ██ ", "██   ██", "██   ██"],
+    "O": [" █████ ", "██   ██", "██   ██", "██   ██", "██   ██", "██   ██", " █████ "],
+    "T": ["███████", "   ██  ", "   ██  ", "   ██  ", "   ██  ", "   ██  ", "   ██  "],
+    "A": ["  ███  ", " ██ ██ ", "██   ██", "███████", "██   ██", "██   ██", "██   ██"],
+    "C": [" █████ ", "██   ██", "██     ", "██     ", "██     ", "██   ██", " █████ "],
+}
+
+# 5-row fallback for terminals that cannot carry the big one.
 _FONT = {
     "Z": ["█████", "   ██", "  ██ ", " ██  ", "█████"],
     "E": ["█████", "██   ", "████ ", "██   ", "█████"],
@@ -81,8 +94,43 @@ def _iterm2_escape(png: bytes) -> str:
     return f"\033]1337;File=inline=1;width=40;preserveAspectRatio=1;size={len(png)}:{data}\a"
 
 
-def _block_wordmark() -> list[str]:
-    return ["  ".join(_FONT[ch][row] for ch in _WORDMARK) for row in range(5)]
+def _block_wordmark(big: bool = False) -> list[str]:
+    font, rows, gap = (_FONT_BIG, 7, " ") if big else (_FONT, 5, "  ")
+    return [gap.join(font[ch][row] for ch in _WORDMARK) for row in range(rows)]
+
+
+_INVERT = str.maketrans({"▀": "▄", "▄": "▀", "█": " ", " ": "█"})
+
+
+def _inverted_mask(mark: list[str]) -> list[str]:
+    """The mask with mark and page swapped: a filled card with the silhouette cut out of it.
+
+    Without colour this is the only way to show the artwork as designed. Painting the
+    silhouette itself white turns the face into a blob, because the cut-outs that carry the
+    eyes, nose and beard become holes in that blob instead of light on a dark shape.
+    """
+    width = max((len(line) for line in mark), default=0)
+    pad = 1
+    return [(" " * pad + line.ljust(width) + " " * pad).translate(_INVERT) for line in mark]
+
+
+def _card_lines(mark: list[str], console: Console) -> list[str]:
+    """Paint the silhouette mask as the artwork: dark mark on a light card.
+
+    The mask already says which half of each cell is the mark ("▀" top, "▄" bottom, "█"
+    both), so printing it with a dark foreground on a light background *is* the logo -
+    the cut-outs that make the face readable stay light instead of becoming holes.
+    Colour is applied here rather than baked into the asset, so 256-colour terminals get
+    it too and NO_COLOR can still turn it off.
+    """
+    if console.color_system == "truecolor":
+        paint = (f"\033[38;2;{_MARK[0]};{_MARK[1]};{_MARK[2]};"
+                 f"48;2;{_PAGE[0]};{_PAGE[1]};{_PAGE[2]}m")
+    else:
+        paint = "\033[38;5;232;48;5;255m"
+    width = max((len(line) for line in mark), default=0)
+    pad = 1                                   # a column of card either side of the mark
+    return [f"{paint}{' ' * pad}{line.ljust(width)}{' ' * pad}{_RESET}" for line in mark]
 
 
 def _ascii_safe(text: str) -> str:
@@ -96,8 +144,8 @@ def _text_lines(width: int, ascii_only: bool = False) -> list[str]:
 
 
 def _supports_card(console: Console) -> bool:
-    """Truecolour is needed: the card is two 24-bit colours per cell."""
-    return (capability.supports_unicode(console) and console.color_system == "truecolor")
+    """Any colour terminal can paint a card; only the palette differs."""
+    return capability.supports_unicode(console) and console.color_system is not None
 
 
 def _visible_width(line: str) -> int:
@@ -145,15 +193,23 @@ def _paint(lines: list[str], console: Console) -> str:
 def _composition(console: Console, unicode_tier: bool, card: bool = False) -> list[str]:
     """Widest layout the terminal can take: big mark + block wordmark, down to text only."""
     width = console.width or 80
-    suffix = "card.ans" if card else ("uni.txt" if unicode_tier else "ascii.txt")
+    suffix = "uni.txt" if (unicode_tier or card) else "ascii.txt"
     big = _mark_lines(f"mark.{suffix}")
     small = _mark_lines(f"mark.small.{suffix}")
+    if card:
+        big, small = _card_lines(big, console), _card_lines(small, console)
+    elif unicode_tier:
+        big, small = _inverted_mask(big), _inverted_mask(small)
     big_width = max((_visible_width(line) for line in big), default=0)
     small_width = max((_visible_width(line) for line in small), default=0)
+    wide = _block_wordmark(big=True)
+    wide_width = max(len(line) for line in wide)
     block = _block_wordmark()
     block_width = max(len(line) for line in block)
 
     ascii_only = not unicode_tier and not card
+    if big and width >= big_width + len(_GUTTER) + wide_width:
+        return _compose(big, wide + ["", _TAGLINE[-1]])
     if big and (unicode_tier or card) and width >= big_width + len(_GUTTER) + block_width:
         return _compose(big, block + ["", _TAGLINE[-1]])
     if big and width >= big_width + len(_GUTTER) + 24:

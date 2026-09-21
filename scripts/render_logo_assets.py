@@ -30,14 +30,15 @@ DEFAULT_SOURCE = ASSETS / "logo2.png"
 _PNG_MAX_SIDE = 240
 _CELL_ASPECT = 2.0   # a terminal cell is about twice as tall as it is wide
 _OPAQUE = 128        # alpha at or above this counts as part of the artwork
-_DARK = 140          # luminance below this is the silhouette (the ink)
+_DARK = 140          # luminance below this is the silhouette
+_LIGHT = 150         # luminance at or above this is the outline and the cut-out detail
 
 _SHADE_RAMP = " ░▒▓█"            # lightest -> darkest; all four exist in CP437
 _ASCII_RAMP = " .:-=+*#%@"       # the classic density ramp
 
 
 def coverage(img: Image.Image, width: int, supersample: int = 4,
-             rows_per_cell: int = 1) -> list[list[float]]:
+             rows_per_cell: int = 1, ink: str = "dark") -> list[list[float]]:
     """Per-cell ink coverage in 0..1, computed by supersampling then averaging.
 
     "Ink" is opaque *and* dark: the mark is a black silhouette whose white details are
@@ -58,13 +59,14 @@ def coverage(img: Image.Image, width: int, supersample: int = 4,
     for cell_y in range(rows):
         line = []
         for cell_x in range(width):
-            ink = 0
+            hits = 0
             for dy in range(supersample):
                 for dx in range(supersample):
                     r, g, b, a = pixels[cell_x * supersample + dx, cell_y * supersample + dy]
                     luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
-                    ink += 1 if (a >= _OPAQUE and luma < _DARK) else 0
-            line.append(ink / (supersample * supersample))
+                    lit = luma >= _LIGHT if ink == "light" else luma < _DARK
+                    hits += 1 if (a >= _OPAQUE and lit) else 0
+            line.append(hits / (supersample * supersample))
         grid.append(line)
     return grid
 
@@ -109,6 +111,13 @@ def to_halfblocks(img: Image.Image, width: int, cutoff: float = 0.45) -> str:
 
 
 def to_ascii(grid: list[list[float]]) -> str:
+    """The OUTLINE, not the silhouette.
+
+    A filled ASCII silhouette is a blob of `@`: at one character per cell there is no room
+    for the cut-outs that make the face readable. Drawing the artwork's light parts instead
+    -- the outline, horns, eyes, mouth, beard -- gives a line drawing that reads at 60-80
+    columns, which is what the ASCII tier is for.
+    """
     return _ramp_art(grid, _ASCII_RAMP)
 
 
