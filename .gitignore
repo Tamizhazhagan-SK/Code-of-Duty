@@ -41,3 +41,8 @@ build/
 coverage.xml
 .coverage
 htmlcov/
+
+# agent tooling installed locally by `npx skills add` (not part of the product)
+.agents/
+.claude/
+skills-lock.json

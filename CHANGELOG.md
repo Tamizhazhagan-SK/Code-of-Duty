@@ -10,8 +10,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   detect -> decide pipeline as the git hook, masking findings out of the text instead of
   blocking, plus two new detectors for this interception point: classification markers
   (`detectors/confidentiality.py`) and indirect prompt injection (`detectors/prompt_injection.py`).
-- Claude Code plugin marketplace (`bmw-skills-marketplace/`), restructured to the official
-  `.claude-plugin/marketplace.json` + `git-subdir` layout so the plugin can live at `skill/`.
+- Vendor-neutral skill packaging for the BMW skills marketplace: `skill/skill.json` (manifest)
+  and `marketplace/submission.json` + `marketplace/README.md` (catalogue entry and submission
+  checklist). Replaces the earlier Claude-specific `.claude-plugin` layout: ZeroTrace is a CLI
+  any agent, MCP host or CI job can call, not a plugin for one vendor's client.
 - MDM/fleet rollout kit (`deploy/`): Intune install/uninstall scripts, a Jamf postinstall
   script, and `policy.example.yml` for org-locked config.
 - Cross-platform single-file binaries via PyInstaller (`zerotrace.spec`), built and attached

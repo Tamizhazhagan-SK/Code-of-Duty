@@ -30,7 +30,7 @@ live end-to-end against the real model (see the demo-scripts row below and "What
 | B1 measure the AI tie-break | ✅ done | `docs/AI_CLASSIFIER.md` "Measured results": p50 105.8 s / p95 130.4 s on CPU-only Docker, 4/4 organic escalations, 2/2 injection cases fooled the model |
 | B2 Windows rehearsal | ✅ done | `docs/DEMO_RUNBOOK.md`, incl. the legacy-console mojibake caveat; re-confirmed live 21 Sep (`run_demo.ps1 -Auto` against the real model) |
 | B3 runbook and pitch | ✅ done | `docs/DEMO_RUNBOOK.md` 8 beats + timings; all 8 beats reproduced live 21 Sep |
-| B4 enterprise packaging | ✅ done, exceeded | `.github/workflows/release.yml` (PyInstaller binaries), `deploy/` (Intune + Jamf + policy example), `bmw-skills-marketplace/.claude-plugin/marketplace.json` + `skill/.claude-plugin/plugin.json`, a real `no-egress` CI job (`ci/no_egress.py`, no longer an `echo` stub) |
+| B4 enterprise packaging | ✅ done, exceeded | `.github/workflows/release.yml` (PyInstaller binaries), `deploy/` (Intune + Jamf + policy example), `skill/skill.json` + `marketplace/submission.json` (vendor-neutral), a real `no-egress` CI job (`ci/no_egress.py`, no longer an `echo` stub) |
 | B5 adversarial testing | ✅ done | `docs/THREAT_MODEL.md` "Known gaps": composed/base64/homoglyph bypasses fixed with regression tests; classifier hijack fixed at the policy layer |
 | A1 act on B1's numbers | 🔶 addressed, differently | `config.py`'s `model_allow_threshold`/`model_escalate_threshold` are still the original 0.6/0.8 — untouched. Instead: `model.timeout_seconds` default went 20 s → 120 s, and the 2/2 unsafe-allow finding was closed at the **policy layer** (new `classifier_hijack` pattern + `policy/engine.py` refusing an ALLOW under injection context) rather than by retuning thresholds. Worth confirming with Tamizh this was a deliberate call, not a skipped step. |
 | A2 Windows installer fixes | ✅ done | `installer.py`: TTY reattach (`</dev/tty` guard in the hook shim), space-safe `shlex.quote`d paths, `%PROGRAMDATA%`-based system scope, a DrvFs guard; `tests/test_installer.py` (13 tests, POSIX-skipped on this machine) |
@@ -141,7 +141,7 @@ Pick these up in order; each is independent.
 1. `.github/workflows/release.yml`: build single-file binaries with PyInstaller for
    macOS/Linux/Windows on tag push, and attach them to the release. Acceptance: the artifact runs
    `zerotrace --help` and `zerotrace doctor` on a machine with no Python.
-2. Restructure `bmw-skills-marketplace/` into the `.claude-plugin/` layout
+2. Package the skill vendor-neutrally (`skill/skill.json` + `marketplace/`)
    (`marketplace.json` + `plugin.json`) pointing at `skill/`. Acceptance: documented install steps
    in the README.
 3. A real egress-deny CI job replacing the `echo` stub in `.github/workflows/ci.yml`: run the test

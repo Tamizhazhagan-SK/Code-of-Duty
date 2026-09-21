@@ -169,20 +169,21 @@ never touched.
 4. `--no-verify` is caught by the pre-push backstop.
 5. `doctor` and an audit log that stores fingerprints only.
 
-## Claude Code plugin
+## Publishing it as a skill
 
-ZeroTrace is also packaged as a Claude Code Agent Skill (`skill/`), distributed through
-`bmw-skills-marketplace/` (a `.claude-plugin/marketplace.json` catalog):
+ZeroTrace is packaged as a **vendor-neutral skill**: a documented CLI that an agent, an MCP host,
+a CI job or a person can call. Nothing in it is specific to one AI client.
 
 ```
-/plugin marketplace add Tamizhazhagan-SK/Code-of-Duty --sparse bmw-skills-marketplace
-/plugin install zerotrace@bmw-skills-marketplace
+skill/SKILL.md        what it does, when to use it, and the rules it must follow
+skill/skill.json      manifest: entrypoint, commands, capabilities, requirements
+marketplace/          the catalogue entry for the BMW skills marketplace
 ```
 
-The marketplace entry fetches the plugin from this same repository's `skill/` directory (a
-`git-subdir` source), so no separate repo or copy of the skill is maintained. The skill runs
-`zerotrace scan --staged --format json` and proposes fixes; it never applies one without your
-approval. See `skill/SKILL.md` and `docs/DEPLOYMENT.md` §6.
+The two guarantees it keeps on any host: findings come back as **fingerprints, never values**,
+and **nothing is changed without explicit human approval**. See `marketplace/README.md` for the
+submission checklist — including confirming the marketplace's own schema, which we do not have
+in this repository — and `docs/DEPLOYMENT.md` §6.
 
 ## Docs
 
