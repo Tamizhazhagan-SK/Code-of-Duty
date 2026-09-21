@@ -90,9 +90,14 @@ Enforce on the server as well:
 
 ## 6. AI coding agents
 
-Agents commit through git, so the global hook covers them automatically. The `skill/`
-directory packages ZeroTrace as an Agent Skill (scan, explain, propose, never auto-apply) for
-Claude Code style marketplaces.
+Agents commit through git, so the global hook covers them automatically, and `zerotrace gateway`
+guards what an agent *reads* (masking secrets/PII and neutralising indirect prompt injection).
+
+For catalogue distribution, `skill/` packages ZeroTrace as a **vendor-neutral skill** — a
+documented CLI (scan, explain, propose, never auto-apply) with a machine-readable manifest
+(`skill/skill.json`). `marketplace/` holds the BMW skills-marketplace entry and the submission
+checklist. The same two commands are what an MCP adapter would expose, if the marketplace
+prefers MCP.
 
 ## 7. WSL
 
