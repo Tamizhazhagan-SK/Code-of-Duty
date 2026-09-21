@@ -62,22 +62,57 @@ def _where(finding) -> str:
     return f"{finding.path}:{finding.line_no}" if finding.line_no else f"{finding.path} (whole file)"
 
 
+def decided_by(decision) -> str:
+    """Where the verdict came from. Shown in both the inline table and the full-screen app."""
+    if decision.model_verdict is not None:
+        return "AI tie-break"
+    return "policy (exception)" if "exception" in decision.reason else "deterministic"
+
+
+def _verdict_line(decisions) -> str:
+    """One sentence a developer can act on, under the table."""
+    blocked = sum(1 for d in decisions if d.action == "block")
+    warned = sum(1 for d in decisions if d.action == "warn")
+    parts = []
+    if blocked:
+        parts.append(f"[bold red]{blocked} blocking[/]")
+    if warned:
+        parts.append(f"[yellow]{warned} to confirm[/]")
+    marks = glyphs.for_console(console)
+    summary = f" {marks['dot']} ".join(parts) or "nothing blocking"
+    return glyphs.sanitize(
+        f"{summary} {marks['dash']} the commit is held until each one is fixed, "
+        "excepted, or abandoned", console)
+
+
 def _summary_table(decisions) -> Table:
     table = Table(title="Staged findings", title_style="bold", expand=False,
-                  box=glyphs.box_for(console))
-    table.add_column("Location", overflow="fold")
-    table.add_column("Rule")
-    table.add_column("Severity")
-    table.add_column("Decided by")
-    table.add_column("Action")
-    for decision in decisions:
+                  box=glyphs.box_for(console), caption=_verdict_line(decisions),
+                  caption_justify="left", row_styles=["", "on grey11"])
+    # Under ~100 columns the "decided by" column is what pushes the location into wrapping,
+    # and a path broken across two lines is not clickable in any terminal. It is dropped
+    # first; it is also repeated in the panel under the table.
+    roomy = console.width >= 100
+    table.add_column("#", justify="right", style="dim", width=2)
+    table.add_column("", width=1)                       # severity accent bar
+    table.add_column("Location", overflow="ellipsis", no_wrap=True, style="bold",
+                     min_width=18)
+    table.add_column("Rule", overflow="ellipsis", no_wrap=True)
+    table.add_column("Severity", no_wrap=True)
+    if roomy:
+        table.add_column("Decided by", style="dim", no_wrap=True)
+    table.add_column("Action", justify="center", no_wrap=True)
+    for index, decision in enumerate(decisions, start=1):
         f = decision.finding
         sev = _SEVERITY_STYLE.get(f.severity, "")
         act = _ACTION_STYLE.get(decision.action, "")
-        by = "AI tie-break" if decision.model_verdict is not None else \
-            ("policy (exception)" if "exception" in decision.reason else "deterministic")
-        table.add_row(_where(f), f.rule_id, f"[{sev}]{f.severity}[/]", by,
-                      f"[{act}]{decision.action.upper()}[/]")
+        bar = glyphs.for_console(console)["bar"]
+        cells = [str(index), f"[{sev.split()[-1]}]{bar}[/]", _where(f), f.rule_id,
+                 f"[{sev}]{f.severity}[/]"]
+        if roomy:
+            cells.append(decided_by(decision))
+        cells.append(f"[{act}]{decision.action.upper()}[/]")
+        table.add_row(*cells)
     return table
 
 
@@ -192,7 +227,9 @@ def _interactive_resolve(decision, cfg, resolved_paths: set[str]) -> bool:
     finding = decision.finding
     console.print(_finding_panel(decision))
     choices, label = _offer_choices(decision, cfg)
-    choice = Prompt.ask(label, choices=choices, default="a")
+    # case_sensitive=False: "V" and "v" are the same answer. Typing the capital letter
+    # shown in the menu should never be rejected.
+    choice = Prompt.ask(label, choices=choices, default="a", case_sensitive=False).lower()
 
     if choice == "u":
         return _apply_unstage(finding, cfg, resolved_paths)

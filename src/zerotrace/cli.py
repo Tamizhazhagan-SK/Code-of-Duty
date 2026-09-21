@@ -85,9 +85,40 @@ def run(args) -> int:
     return 1
 
 
+def _tui_available() -> bool:
+    """A full-screen app needs a real terminal. TERM=dumb (Emacs shells, some CI pty
+    allocators) says it cannot move a cursor, so take it at its word and stay inline."""
+    import os
+    from importlib.util import find_spec
+    if os.environ.get("TERM", "") in ("dumb", "unknown"):
+        return False
+    return find_spec("textual") is not None
+
+
 def review(args) -> int:
+    """Fix the staged findings. Full-screen when a terminal and textual are available,
+    otherwise the same inline flow the hook uses."""
+    from .ui.terminal import is_interactive
     args.force_interactive = True
-    return run(args)
+    if getattr(args, "classic", False) or not is_interactive() or not _tui_available():
+        return run(args)
+
+    cfg = load_config()
+    for attempt in range(5):        # re-scan after fixes until the index is clean
+        decisions = pipeline.scan(staged_diff.collect_staged(), cfg)
+        for decision in decisions:
+            _record_decision(decision)
+        blocking = _blocking(decisions)
+        if not blocking:
+            print("zerotrace: no blocking findings in the staged diff." if not attempt
+                  else "zerotrace: all findings resolved; the commit can proceed.")
+            return 0
+        from .ui.tui import review as review_app
+        if review_app(blocking, cfg) != 0:
+            print("zerotrace: review left findings open. Nothing was committed.",
+                  file=sys.stderr)
+            return 1
+    return 1
 
 
 def _decisions_to_json(decisions, commit: str = "") -> list[dict]:
@@ -361,7 +392,9 @@ def _parser() -> argparse.ArgumentParser:
     r = sub.add_parser("run", help="scan the staged diff (what the pre-commit hook runs)")
     r.add_argument("--hook", action="store_true", help=argparse.SUPPRESS)
     r.add_argument("files", nargs="*", help=argparse.SUPPRESS)  # pre-commit passes filenames
-    sub.add_parser("review", help="interactively fix blocking findings in the staged diff")
+    rv = sub.add_parser("review", help="interactively fix blocking findings in the staged diff")
+    rv.add_argument("--classic", action="store_true",
+                    help="use the inline prompts instead of the full-screen reviewer")
 
     s = sub.add_parser("scan", help="scan staged changes, a commit range, or the whole tree")
     g = s.add_mutually_exclusive_group()

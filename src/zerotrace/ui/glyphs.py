@@ -7,9 +7,11 @@ stream can render instead, and keep the meaning.
 """
 from rich.console import Console
 
-_PROBE = "✓✗·…×"
-_UNICODE = {"ok": "✓", "warn": "!", "fail": "✗", "dot": "·", "ellipsis": "…", "arrow": "→"}
-_ASCII = {"ok": "+", "warn": "!", "fail": "x", "dot": "-", "ellipsis": "...", "arrow": "->"}
+_PROBE = "✓✗·…×—█"
+_UNICODE = {"ok": "✓", "warn": "!", "fail": "✗", "dot": "·", "ellipsis": "…", "arrow": "→",
+            "dash": "—", "bar": "█"}
+_ASCII = {"ok": "+", "warn": "!", "fail": "x", "dot": "-", "ellipsis": "...", "arrow": "->",
+          "dash": "-", "bar": "|"}
 
 
 def encodable(console: Console, sample: str = _PROBE) -> bool:
