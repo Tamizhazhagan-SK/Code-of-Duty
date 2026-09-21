@@ -205,3 +205,13 @@ def test_mono_tier_is_inverted_so_the_head_reads_as_the_artwork(monkeypatch):
     filled = sum(line.count("█") for line in mark_columns)
     empty = sum(line.count(" ") for line in mark_columns)
     assert filled > empty
+
+
+def test_card_margins_are_equal_on_both_sides():
+    """The asset keeps the source's off-centre bounding box; the card must not."""
+    mark = logo._mark_lines("mark.uni.txt")
+    centred = logo._centred(mark)
+    left = min(len(line) - len(line.lstrip(" ")) for line in centred if line.strip())
+    right = min(len(line) - len(line.rstrip(" ")) for line in centred if line.strip())
+    assert left == right == logo._CARD_MARGIN
+    assert len({len(line) for line in centred}) == 1, "the card is a rectangle"
