@@ -144,8 +144,11 @@ def test_full_screen_flags_fall_back_to_plain_output_without_a_terminal(repo, ca
     assert captured.out.strip(), "the plain report is printed instead"
 
 
-def test_the_exception_listing_shows_rule_and_file(repo, capsys):
+def test_the_exception_listing_shows_rule_and_file(repo, capsys, monkeypatch):
     from zerotrace.audit import exceptions
+    # Wide enough that no cell wraps: this is about escaping, not the runner's console width
+    # (the Windows runner's is a column narrower and folded the reason across two lines).
+    monkeypatch.setenv("COLUMNS", "200")
     exceptions.add("f" * 64, "vendor [sample] key", 7, rule_id="stripe-live-key", path="pay.py")
     assert run("exceptions") == 0
     out = capsys.readouterr().out

@@ -1,4 +1,5 @@
 """The full-screen doctor, driven through Textual's Pilot against a sandboxed repo."""
+import asyncio
 import threading
 import time
 
@@ -26,6 +27,15 @@ async def _settle(pilot, app, timeout: float = 30.0) -> None:
         assert time.monotonic() < deadline, "the checks never finished"
         await pilot.pause(0.05)
     await pilot.pause()
+
+
+async def _join(worker: threading.Thread | None, timeout: float = 10.0) -> None:
+    """Wait for a check thread while the event loop keeps running, so any result it hands to
+    the UI is processed now rather than leaking into the next test."""
+    deadline = time.monotonic() + timeout
+    while worker is not None and worker.is_alive():
+        assert time.monotonic() < deadline, "the check thread never finished"
+        await asyncio.sleep(0.05)
 
 
 def _go_to(app, name: str) -> None:
@@ -119,7 +129,32 @@ async def test_leaving_before_the_checks_finish_is_not_a_pass(repo, monkeypatch)
             await pilot.pause()
     finally:
         gate.set()
+    await _join(app.worker)
     assert app.return_value == 1
+
+
+async def test_a_result_arriving_after_quitting_is_dropped_quietly(repo, monkeypatch):
+    """Quitting mid-run used to let the last result draw into a screen that was already torn
+    down; the check thread died with NoMatches (seen on the Windows runner)."""
+    failures: list = []
+    monkeypatch.setattr(threading, "excepthook", failures.append)
+    gate = threading.Event()
+
+    def late(pin_model=False, warm=False, listener=None):
+        gate.wait(10)
+        listener(Check(OK, "python", "too late"))
+        return doctor.Report()
+
+    monkeypatch.setattr(doctor, "collect", late)
+    app = DoctorApp()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await pilot.press("q")
+        await pilot.pause()
+    gate.set()
+    await _join(app.worker)
+    assert failures == []
+    assert app.checks == [], "nothing is drawn once the app has closed"
 
 
 async def test_a_crashing_check_is_a_failure_and_its_text_is_not_markup(repo, monkeypatch):

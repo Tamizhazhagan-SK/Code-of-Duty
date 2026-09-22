@@ -68,6 +68,7 @@ class DoctorApp(ListDetailApp[Check]):
         super().__init__()
         self.checks: list[Check] = []
         self.running = False
+        self.worker: threading.Thread | None = None     # the run in progress, for tests
         self._first_run = (pin_model, warm)
 
     def loaded(self) -> None:
@@ -131,8 +132,9 @@ class DoctorApp(ListDetailApp[Check]):
         # A plain daemon thread rather than a Textual thread worker: those run on the event
         # loop's default executor, which the interpreter joins at exit, so quitting during a
         # two-minute model warm-up would leave the terminal hanging after the screen closed.
-        threading.Thread(target=self._collect, args=(pin_model, warm),
-                         name="zerotrace-doctor", daemon=True).start()
+        self.worker = threading.Thread(target=self._collect, args=(pin_model, warm),
+                                       name="zerotrace-doctor", daemon=True)
+        self.worker.start()
 
     def _collect(self, pin_model: bool, warm: bool) -> None:
         """Runs on the background thread. Every change to the screen goes through `_post`."""
@@ -144,16 +146,26 @@ class DoctorApp(ListDetailApp[Check]):
         self._post(self._finish)
 
     def _post(self, callback: Callable[..., None], *args: object) -> None:
-        # The app may close while a check is still running: RuntimeError when it has
-        # stopped, CancelledError when it stops mid-call. Either way nobody is left to tell.
+        """Hand a result to the UI thread, unless the app has closed while a check ran.
+
+        `closing` is checked here and again in the callback, because the app can start to
+        exit after the result was queued. RuntimeError (the loop has stopped) and
+        CancelledError (it stopped mid-call) are the same situation seen from this thread.
+        """
+        if self.closing:
+            return
         with contextlib.suppress(RuntimeError, CancelledError):
             self.call_from_thread(callback, *args)
 
     def _add(self, check: Check) -> None:
+        if self.closing:
+            return
         self.checks.append(check)
         self.redraw(keep=self.current())
 
     def _finish(self) -> None:
+        if self.closing:
+            return
         self.running = False
         failed = sum(1 for check in self.checks if check.status == FAIL)
         self.sub_title = f"{failed} failing" if failed else "no failures"

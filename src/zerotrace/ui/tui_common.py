@@ -8,6 +8,7 @@ both cases, `v,V`, because the footer shows capitals), the arrow keys and Enter,
 """
 from typing import ClassVar, Generic, TypeVar
 
+from rich.console import RenderableType
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
@@ -269,6 +270,18 @@ class ListDetailApp(App[int], Generic[ItemT]):
         # What the two panes say, kept as markup strings so tests can assert on them.
         self.detail_text = ""
         self.status_text = ""
+        self._leaving = False
+
+    @property
+    def closing(self) -> bool:
+        """True from the moment the app starts to exit. Its widgets may already be gone, so
+        work finishing on another thread must drop its result instead of drawing it."""
+        return self._leaving or not self.is_running
+
+    def exit(self, result: int | None = None, return_code: int = 0,
+             message: RenderableType | None = None) -> None:
+        self._leaving = True
+        super().exit(result, return_code, message)
 
     # --- what each app decides ---------------------------------------------------------
     def shown_items(self) -> list[ItemT]:
