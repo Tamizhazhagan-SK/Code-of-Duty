@@ -268,7 +268,10 @@ def banner() -> None:
 
 
 def present(decisions, cfg, interactive: bool = True) -> int:
-    banner()
+    """Show the blocking findings and, interactively, resolve them one by one.
+
+    No banner: the logo belongs to the first install, not to every blocked commit.
+    """
     if not interactive:
         headless_report(decisions, cfg)
         return 1
