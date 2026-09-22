@@ -6,7 +6,7 @@ one the reviewer's `E` key writes to — and does the three things worth doing w
 exception: promote it for review, revoke it, or clear out the ones that have expired.
 """
 import contextlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from ..audit import exceptions as store
 from ..audit import log as audit_log
@@ -44,33 +44,38 @@ the finding is reported again.
 """
 
 
-def _days_left(entry: Entry, now: datetime) -> float | None:
+_ZERO = timedelta(0)
+
+
+def _time_left(entry: Entry, now: datetime) -> timedelta | None:
+    """Time until the exception expires; negative once it has. None when it cannot be read."""
     try:
-        return (datetime.fromisoformat(entry.expires_at) - now).total_seconds() / 86400
+        return datetime.fromisoformat(entry.expires_at) - now
     except (TypeError, ValueError):     # unparseable, or a date without a timezone
         return None
 
 
 def _expiry_short(entry: Entry, now: datetime) -> str:
-    days = _days_left(entry, now)
-    if days is None:
+    """The table cell: whole days either side of the expiry (`timedelta.days` floors)."""
+    left = _time_left(entry, now)
+    if left is None:
         return "unknown"
-    if days >= 1:
-        return f"in {int(days)} d"
-    if days > 0:
-        return "< 1 d"
-    return "expired" if days > -1 else f"{int(-days)} d ago"
+    if left > _ZERO:
+        return f"in {left.days} d" if left.days else "< 1 d"
+    overdue = (-left).days
+    return f"{overdue} d ago" if overdue else "expired"
 
 
 def _expiry_long(entry: Entry, now: datetime) -> str:
-    days = _days_left(entry, now)
+    left = _time_left(entry, now)
     date = entry.expires_at[:10]
-    if days is None:
+    if left is None:
         return "the expiry cannot be read, so the exception does not apply"
-    if days >= 1:
-        count = int(days)
-        return f"expires {date} (in {count} day{'' if count == 1 else 's'})"
-    return f"expires {date} (within a day)" if days > 0 else f"expired {date}"
+    if left <= _ZERO:                # the store treats the expiry instant as expired too
+        return f"expired {date}"
+    if not left.days:
+        return f"expires {date} (within a day)"
+    return f"expires {date} (in {left.days} day{'' if left.days == 1 else 's'})"
 
 
 class ExceptionsApp(ListDetailApp[Entry]):

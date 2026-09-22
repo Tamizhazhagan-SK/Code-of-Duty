@@ -7,6 +7,7 @@ configured before us, so git-lfs, husky-style scripts and commit-msg linters kee
 import contextlib
 import json
 import os
+import re
 import shlex
 import stat
 import subprocess
@@ -149,12 +150,28 @@ fi
 """
 
 
+# What may be written into a hook script as a path: absolute, one line, no NUL. POSIX `/…`,
+# Windows `C:\…` or `C:/…`, UNC `\\host\…`. Absolute means it can never be read as an option
+# (`-x`) by `[ -x … ]` or `exec`, which quoting alone does not prevent.
+_SCRIPT_PATH_RE = re.compile(r"(?:/|[A-Za-z]:[\\/]|\\\\)[^\x00\n\r]{0,4095}")
+
+
+def _checked_script_path(value: str) -> str:
+    """The path as it may appear in a generated script, rebuilt from the match so that
+    nothing unvalidated (a hand-edited state file, a git config value) reaches the script."""
+    match = _SCRIPT_PATH_RE.fullmatch(value)
+    if match is None:
+        raise ValueError(f"refusing to write a non-absolute path into a hook script: {value!r}")
+    return match.group(0)
+
+
 def _sh_path(path: str) -> str:
     return path.replace("\\", "/")
 
 
 def _sh_quote(value: str) -> str:
-    return shlex.quote(_sh_path(value)) if value else "''"
+    """An absolute path for a generated hook script, quoted for sh. Empty means "none"."""
+    return shlex.quote(_sh_path(_checked_script_path(value))) if value else "''"
 
 
 def python_path() -> str:
