@@ -21,7 +21,11 @@ a = Analysis(
     hiddenimports=["detect_secrets.plugins"],
     hookspath=[],
     runtime_hooks=[],
-    excludes=[],
+    # The binary is the guardrail: hook, scan, doctor. The release job installs `.[dev]`, which
+    # now pulls in textual, and PyInstaller would follow the lazy `ui.tui` import and bundle it
+    # half-working (textual.widgets loads its modules dynamically). Leave it out, so the
+    # binary's `review` takes the inline flow.
+    excludes=["textual"],
     noarchive=False,
 )
 pyz = PYZ(a.pure, a.zipped_data)
