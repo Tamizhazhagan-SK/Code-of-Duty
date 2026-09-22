@@ -106,6 +106,40 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   abort, and nothing is committed either way.
 - A malformed entry in the shared exceptions file (a string where an object belongs) could
   crash the exception listing; such entries are ignored, as they already were for matching.
+- Aadhaar and payment-card detection matched checksum-valid digit runs *inside* hex digests
+  (a lock file's `--hash=sha256:…`, a git object id), so committing a hash-pinned requirements
+  file was blocked as national-ID or card data. Both now need a non-word character on either
+  side, as phone numbers already did; standalone numbers are still caught.
+- The full-screen doctor could lose its last result into a closed screen: quitting while a
+  check was still running let the result arrive after the widgets were torn down, and the
+  check thread died with `NoMatches` (seen on the Windows runner). Results that arrive after
+  the app starts to exit are now dropped.
+- `tests/test_cli.py` failed on the Windows runner because its console is a column narrower
+  and folded a table cell; the test now pins a wide console, since it checks escaping.
+- The exceptions browser's expiry labels are computed on whole days of a `timedelta` rather
+  than chained float comparisons (the same results, which SonarQube misread as a dead branch).
+
+### Security
+- Every install in CI, the release build and the contributor bootstrap scripts is
+  hash-locked and wheel-only: `requirements/runtime.txt`, `dev.txt` and `release.txt`, written
+  by `scripts/lock_deps.py` (`uv pip compile --universal --generate-hashes`), are installed with
+  `pip install --require-hashes --only-binary :all:`, and the project itself with `--no-deps
+  --no-build-isolation --no-index`. No dependency runs setup code while installing, and a
+  tampered or unexpected file fails the hash check. `tests/test_locks.py` fails when a lock no
+  longer satisfies `pyproject.toml`; Dependabot now watches the locks as well.
+- Paths written into generated hook scripts must be absolute and on one line, and are rebuilt
+  from the validated match. Shell quoting stopped injection, but an option-like value such
+  as `-x` could still have been read as a flag by `[ -x … ]` or `exec`.
+- The Jamf script (runs as root) downloads the installer over HTTPS only, redirects included
+  (`--proto '=https' --tlsv1.2`), to a file before running it, so a dropped connection never
+  runs a truncated script. The documented `curl` one-liners use the same flags.
+- `.sonarcloud.properties` gives SonarQube's Automatic Analysis the configuration it was
+  missing (it ignores `sonar-project.properties`): test sources, the supported Python
+  versions, and the fixture exclusions. `.github` stays analysed.
+- Generated eval passwords are shuffled with `secrets.randbelow` (Fisher-Yates) instead of
+  `SystemRandom().shuffle`, so nothing in the package reads as the non-cryptographic `random`
+  module. The demo fixtures now run as a non-root user and keep database backups, so the only
+  mistake each one teaches is the secret it plants.
 
 ## [0.1.0] - 2026-09-17
 First public release.
