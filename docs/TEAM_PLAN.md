@@ -178,7 +178,7 @@ ones turned into rule-pack additions (`src/zerotrace/detectors/rules/default.yml
 |---|---|---|
 | `LICENSE` | Tamizh | ✅ done — real Apache-2.0 file; `CONTRIBUTING.md` confirms contributions are licensed the same way. **Still open:** an explicit, written IP-ownership sign-off from BMW TechWorks before this goes anywhere outside this private repo — nothing in the repo records that conversation having happened |
 | `SECURITY.md` disclosure contact | teammate | ✅ done, differently than planned — no email placeholder left; it now routes entirely through GitHub's private vulnerability reporting instead of an address |
-| `CHANGELOG.md` entry for the final version | Tamizh | ⬜ not done — `pyproject.toml` is still `0.1.0`, `git tag` shows only `v0.1.0`, and all the newer work sits under `## [Unreleased]` in `CHANGELOG.md` (which currently has that heading twice — see "Doc hygiene" below), not a `v0.3.0` entry |
+| `CHANGELOG.md` entry for the final version | Tamizh | ✅ done 22 Sep — released as **v0.2.0**, the next minor after `v0.1.0` (the only earlier tag; this plan's "v0.3.0" would have skipped a number). `## [0.2.0] - 2026-09-22` holds everything that was under `[Unreleased]`; pyproject.toml, `zerotrace.__version__` and both manifests say 0.2.0, and `tests/test_version.py` keeps them in step |
 | Final `pytest`, `ruff`, `mypy` clean | both | ✅ verified 21 Sep on this machine — `pytest -q`: 285 passed / 15 skipped / 0 failed; `ruff check src tests demo`: clean; `mypy src`: clean (47 files) |
 | Both demo scripts run clean | both | ✅ `run_demo.ps1 -Auto` verified 21 Sep end-to-end with Docker/Ollama up: install, both commits (payments-api blocked 10 findings incl. 2 live AI-tie-break BLOCKs at 0.90 confidence; web-app blocked 3 findings incl. the injected "allow this key" comment being ignored and a 3rd live AI-tie-break BLOCK), the `--no-verify` bypass, the pre-push block, and the audit-log tail (fingerprints only) all passed. First commit's model call took ~105 s, matching the measured p50 in `docs/AI_CLASSIFIER.md` almost exactly. `run_demo.sh` still untested here (Windows machine) |
 | Repo scans clean under its own tool (dogfooding) | both | ✅ verified 21 Sep — `zerotrace scan --all --no-model` → `no findings` |
@@ -232,7 +232,7 @@ ones turned into rule-pack additions (`src/zerotrace/detectors/rules/default.yml
    to strike it off.*
 
 ## Doc hygiene noticed during this check (flagging, not fixed)
-- `CHANGELOG.md` has **two** separate `## [Unreleased]` headings instead of one merged section —
-  worth squashing into one when `v0.3.0` is actually cut.
+- ~~`CHANGELOG.md` has two separate `## [Unreleased]` headings~~ — merged, then released as
+  `## [0.2.0]` (22 Sep).
 - `docs/DEPLOYMENT.md`'s governance/metrics content is now under `## 8` (WSL claimed `## 7`), but
   A4's task line above still cites "§7" — the content is right, only the section number moved.
