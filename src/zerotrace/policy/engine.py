@@ -5,11 +5,13 @@ Asymmetric trust in the model (docs/ADR/0002):
   * For MEDIUM, the model may lower friction (placeholder -> allow) or raise it
     (REAL_SECRET -> block). Any model failure leaves the finding at WARN.
 """
+from collections.abc import Iterable
 from dataclasses import dataclass
 
-from ..detectors import Finding
+from ..detectors import SEVERITY_ORDER, Finding
 
 _NOT_PROVIDED = object()
+_ACTION_RANK = {"block": 0, "warn": 1, "allow": 2}
 
 
 @dataclass(frozen=True)
@@ -19,6 +21,21 @@ class Decision:
     reason: str
     finding: Finding
     model_verdict: object = None
+
+
+def by_priority(decisions: Iterable[Decision]) -> list[Decision]:
+    """The one order every listing uses: the summary table, the panels under it, the
+    full-screen reviewer and `scan --format json`.
+
+    What blocks comes before what only warns; within each, the most severe first (critical,
+    high, medium, low); then file and line, so the same findings never shuffle between runs.
+    """
+    return sorted(decisions, key=lambda d: (
+        _ACTION_RANK.get(d.action, len(_ACTION_RANK)),
+        -SEVERITY_ORDER.get(d.finding.severity, -1),
+        d.finding.path,
+        d.finding.line_no,
+    ))
 
 
 def _where(finding) -> str:

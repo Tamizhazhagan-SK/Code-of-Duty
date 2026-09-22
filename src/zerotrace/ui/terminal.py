@@ -14,7 +14,7 @@ from ..audit import log as audit_log
 from ..audit.fingerprint import of_finding
 from ..classifier.redact import language_of, redact
 from . import glyphs, menu
-from ..policy.engine import Decision
+from ..policy.engine import Decision, by_priority
 from ..remediation import applier, proposer
 from . import logo as logo_render
 
@@ -143,6 +143,7 @@ def _fix_hint(decision, cfg) -> str:
 
 
 def headless_report(decisions, cfg=None) -> None:
+    decisions = by_priority(decisions)       # the table and the panels in the same order
     _remember(decisions)
     console.print(_summary_table(decisions))
     for decision in decisions:
@@ -270,8 +271,10 @@ def banner() -> None:
 def present(decisions, cfg, interactive: bool = True) -> int:
     """Show the blocking findings and, interactively, resolve them one by one.
 
-    No banner: the logo belongs to the first install, not to every blocked commit.
+    No banner: the logo belongs to the first install, not to every blocked commit. The table
+    and the panels under it follow the same priority order (policy.engine.by_priority).
     """
+    decisions = by_priority(decisions)
     if not interactive:
         headless_report(decisions, cfg)
         return 1
