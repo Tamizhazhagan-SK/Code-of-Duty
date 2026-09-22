@@ -120,6 +120,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   than chained float comparisons (the same results, which SonarQube misread as a dead branch).
 
 ### Security
+- The release workflow is read-only by default; only the job that publishes the GitHub release
+  gets `contents: write`, so none of the binary builds can write to the repository.
 - Every install in CI, the release build and the contributor bootstrap scripts is
   hash-locked and wheel-only: `requirements/runtime.txt`, `dev.txt` and `release.txt`, written
   by `scripts/lock_deps.py` (`uv pip compile --universal --generate-hashes`), are installed with
