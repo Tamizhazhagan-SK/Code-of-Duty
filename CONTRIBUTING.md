@@ -20,13 +20,31 @@ git clone https://github.com/Tamizhazhagan-SK/Code-of-Duty.git && cd Code-of-Dut
 .\scripts\dev_bootstrap.ps1         # Windows, same steps
 ```
 
-Or manually:
+Or manually, with the same locked install CI runs:
 
 ```bash
-uv sync --extra dev
-pre-commit install
-uv run pytest
+python3 -m venv .venv && . .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+python -m pip install --require-hashes --only-binary :all: -r requirements/dev.txt
+python -m pip install --no-deps --no-build-isolation --no-index --only-binary :all: -e .
+zerotrace install --global                             # also runs .pre-commit-config.yaml
+pytest -q
 ```
+
+## Dependencies
+
+Every install — CI, the bootstrap scripts, the release build — uses the hash-pinned locks in
+`requirements/`: `runtime.txt` (the package + its build backend), `dev.txt` (+ the dev and tui
+extras) and `release.txt` (+ PyInstaller). Each package is a wheel whose hash is known in
+advance, so nothing runs setup code while installing. After changing dependencies in
+`pyproject.toml` (or `requirements/*.in`), regenerate them and commit the result:
+
+```bash
+python scripts/lock_deps.py              # needs uv: pipx install uv
+python scripts/lock_deps.py --upgrade    # move every pin to the newest allowed version
+```
+
+`tests/test_locks.py` fails when a lock no longer satisfies `pyproject.toml`, so a forgotten
+re-lock shows up in CI rather than as a silently older dependency.
 
 ## Tests you must add for a new detector
 

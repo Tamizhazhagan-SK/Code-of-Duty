@@ -8,8 +8,11 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore"
+  # The hash-pinned locks in requirements/ are what CI and contributors actually install, so
+  # security alerts and updates must cover them, not only the ranges in pyproject.toml. For a
+  # full refresh (every pin, re-resolved together), run `python scripts/lock_deps.py --upgrade`.
   - package-ecosystem: pip
-    directory: /
+    directories: ["/", "/requirements"]
     schedule:
       interval: weekly
     commit-message:
