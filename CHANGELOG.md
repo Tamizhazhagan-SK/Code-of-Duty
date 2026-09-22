@@ -4,6 +4,8 @@ All notable changes documented here, following [Keep a Changelog](https://keepac
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-09-22
 ### Added
 - Runtime security gateway (`src/zerotrace/gateway`) and `zerotrace gateway` CLI subcommand:
   sanitizes arbitrary AI-agent/MCP-tool/RAG payloads (not git-backed) through the same
@@ -106,6 +108,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   abort, and nothing is committed either way.
 - A malformed entry in the shared exceptions file (a string where an object belongs) could
   crash the exception listing; such entries are ignored, as they already were for matching.
+- `zerotrace version` printed 0.2.0 while the package metadata said 0.1.0. Every version
+  declaration (pyproject.toml, `zerotrace.__version__`, the skill and marketplace manifests)
+  now agrees, and `tests/test_version.py` keeps them in step with the changelog.
 - Aadhaar and payment-card detection matched checksum-valid digit runs *inside* hex digests
   (a lock file's `--hash=sha256:…`, a git object id), so committing a hash-pinned requirements
   file was blocked as national-ID or card data. Both now need a non-word character on either
@@ -175,3 +180,7 @@ First public release.
 ### Fixed
 - Secrets other than AWS/PEM could reach the model unredacted.
 - The interactive menu never appeared under the pre-commit framework.
+
+[Unreleased]: https://github.com/Tamizhazhagan-SK/Code-of-Duty/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Tamizhazhagan-SK/Code-of-Duty/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Tamizhazhagan-SK/Code-of-Duty/releases/tag/v0.1.0
