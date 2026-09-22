@@ -9,19 +9,19 @@ introduction).
 
 ## macOS
 
-| Release | Version | Released | Notes |
-|---|---|---|---|
-| Golden Gate (current) | 27 | 2026-09-14 | **Apple Silicon only** — drops Intel entirely. Last release with full Rosetta 2. |
-| Tahoe (current − 1) | 26 | 2025-09-15 | Last release with Intel support. Verify Intel-Mac support against this release, not Golden Gate. |
+| Release               | Version | Released   | Notes                                                                                            |
+| --------------------- | ------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| Golden Gate (current) | 27      | 2026-09-14 | **Apple Silicon only** — drops Intel entirely. Last release with full Rosetta 2.          |
+| Tahoe (current − 1)  | 26      | 2025-09-15 | Last release with Intel support. Verify Intel-Mac support against this release, not Golden Gate. |
 
 Never depend on a system Python — `python3` may be only a Command Line Tools stub;
 Homebrew Python (or the standalone binary) is the real dependency.
 
 ## Windows
 
-| Release | Released | Notes |
-|---|---|---|
-| 11, version 25H2 (current) | 2025-09-30 | Ships as an enablement package on the 24H2 servicing branch. |
+| Release                         | Released   | Notes                                                                                                          |
+| ------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------- |
+| 11, version 25H2 (current)      | 2025-09-30 | Ships as an enablement package on the 24H2 servicing branch.                                                   |
 | 11, version 24H2 (current − 1) | 2024-10-01 | First version to require an x86-64-v2 CPU (POPCNT + SSE4.2) at the kernel level — it will not boot otherwise. |
 
 Version 26H1 (2026-02-10) is an ARM64-only platform release, not a general floor.
@@ -31,13 +31,13 @@ not a supported target.
 
 ## Linux
 
-| Distro | Current | Current − 1 | Notes |
-|---|---|---|---|
-| Ubuntu | 26.04 LTS "Resolute Raccoon" (2026-04-23) | 24.04 LTS (2024-04-25) | 26.10 not GA yet. |
-| Debian | 13 "Trixie" (2025-08-09) | 12 "Bookworm" (oldstable) | |
-| Fedora | 44 (2026-04-28) | 43 (2025-10-28) | |
-| Arch | rolling | n/a | Always "current" by definition. |
-| openSUSE | Leap 16 (2025-10-01) | Leap 15.6 | Leap 16 replaced YaST with Agama/Cockpit/Myrlyn. |
+| Distro   | Current                                   | Current − 1              | Notes                                            |
+| -------- | ----------------------------------------- | ------------------------- | ------------------------------------------------ |
+| Ubuntu   | 26.04 LTS "Resolute Raccoon" (2026-04-23) | 24.04 LTS (2024-04-25)    | 26.10 not GA yet.                                |
+| Debian   | 13 "Trixie" (2025-08-09)                  | 12 "Bookworm" (oldstable) |                                                  |
+| Fedora   | 44 (2026-04-28)                           | 43 (2025-10-28)           |                                                  |
+| Arch     | rolling                                   | n/a                       | Always "current" by definition.                  |
+| openSUSE | Leap 16 (2025-10-01)                      | Leap 15.6                 | Leap 16 replaced YaST with Agama/Cockpit/Myrlyn. |
 
 PEP 668 (externally-managed environments) is standard on all of the above as of
 these releases: `pipx`/`uv tool install`/the standalone binary are the documented
@@ -101,14 +101,14 @@ zerotrace ui --tier all      # every tier in one pass
 
 What ZeroTrace does automatically:
 
-| Console | Behaviour |
-|---|---|
-| Windows Terminal, iTerm2, GNOME Terminal, VS Code, JetBrains | shaded Unicode mark, colour, rounded box borders |
-| Kitty, WezTerm, Ghostty, iTerm2, Konsole | inline PNG logo via the terminal's image protocol |
-| any truecolour UTF-8 terminal | the mark as designed: dark silhouette on a light card (fg+bg per half block) |
-| legacy `cmd.exe`, PowerShell 5.1 (cp437/cp1252) | ASCII mark, ASCII box borders, `+`/`x` instead of `✓`/`✗` |
-| redirected output, CI logs, `NO_COLOR` | no colour, no image escapes, no in-place redraw |
-| narrow terminals (< 60 columns) | smaller mark, then wordmark only |
+| Console                                                      | Behaviour                                                                    |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Windows Terminal, iTerm2, GNOME Terminal, VS Code, JetBrains | shaded Unicode mark, colour, rounded box borders                             |
+| Kitty, WezTerm, Ghostty, iTerm2, Konsole                     | inline PNG logo via the terminal's image protocol                            |
+| any truecolour UTF-8 terminal                                | the mark as designed: dark silhouette on a light card (fg+bg per half block) |
+| legacy `cmd.exe`, PowerShell 5.1 (cp437/cp1252)             | ASCII mark, ASCII box borders, `+`/`x` instead of `✓`/`✗`           |
+| redirected output, CI logs, `NO_COLOR`                      | no colour, no image escapes, no in-place redraw                              |
+| narrow terminals (< 60 columns)                              | smaller mark, then wordmark only                                             |
 
 If something still looks wrong, `zerotrace ui` prints the detected capabilities (encoding,
 colour system, size, relevant environment variables) — include that output in a bug report.

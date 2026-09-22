@@ -100,7 +100,7 @@ escape the global install is flagged by `zerotrace doctor` and patched in place 
 | `zerotrace run`                                               | what the pre-commit hook runs: staged diff, interactive fix when a TTY exists   |
 | `zerotrace review`                                            | fix a headless block (VS Code, GUI) interactively — full-screen when a terminal and `textual` are installed, the inline flow otherwise |
 | `zerotrace scan --range A..B` / `--all`                     | CI / PR backstop, onboarding scan (`--format json`)                           |
-| `zerotrace init`                                              | repo`.zerotrace.yml` + hashed `.secrets.baseline` for pre-existing findings |
+| `zerotrace init`                                              | repo `.zerotrace.yml` + hashed `.secrets.baseline` for pre-existing findings |
 | `zerotrace doctor [--pin-model] [--warm]`                     | health check, model integrity pin, warm-up                                      |
 | `zerotrace eval`                                              | precision and latency of the AI tie-break on labelled synthetic cases           |
 | `zerotrace ui [--tier auto\|unicode\|ascii\|text\|all]`        | render every screen to check a terminal (CMD, PowerShell, Windows Terminal, IDEs) |

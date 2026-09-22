@@ -49,7 +49,7 @@ management. The gaps are the human paths around them:
 | Gap                                               | Why it survives a vault                                                                                                                | Does ZeroTrace help?                                                                  |
 | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | **Secret zero / bootstrap**                 | Something must authenticate*to* the vault. That bootstrap credential often ends up in a config file, a Dockerfile or a CI variable⁵ | **Yes** — it is a credential in a file at commit time                          |
-| **Local development**                       | Developers copy a value out of the vault into`.env`, `settings_local.py`, a notebook or a launch config to work offline            | **Yes** — `.env` is unstaged and a keys-only `.env.example` is generated   |
+| **Local development**                       | Developers copy a value out of the vault into `.env`, `settings_local.py`, a notebook or a launch config to work offline            | **Yes** — `.env` is unstaged and a keys-only `.env.example` is generated   |
 | **Test fixtures with production-like data** | Vaults hold credentials, not customer records. Nothing stops a support ticket's data becoming a fixture                                | **Yes, uniquely** — PII detection (email, phone, PAN, Aadhaar, cards, IBAN)    |
 | **Legacy and glue code**                    | Scripts, Terraform, Dockerfiles, RPA workflows and one-off jobs predate the vault or skip it under deadline                            | **Yes** — detection across 10+ languages and config formats                    |
 | **Third parties and contractors**           | The Toyota leak came from a*subcontractor* publishing code containing a key⁶                                                        | **Yes, if installed on their machine**; otherwise the CI/server scan is the net |
@@ -109,15 +109,15 @@ policy engine, a bounded local AI that never sees the value, and a fix rather th
 
 | #  | Scenario                                                                   | Vault in place?                  | What ZeroTrace does                                  |
 | -- | -------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
-| 1  | Live Stripe key pasted into`payments/charge.py` while debugging a refund | Yes, unused in the moment        | Blocks; rewrites to`os.environ[...]`               |
-| 2  | `DATABASE_URL` with a password in a connection string                    | Yes, but this is glue code       | Blocks; rewrites, names`DATABASE_URL`              |
-| 3  | `.env` staged by accident                                                | Irrelevant — it is a local file | Unstages, gitignores, writes`.env.example`         |
+| 1  | Live Stripe key pasted into `payments/charge.py` while debugging a refund | Yes, unused in the moment        | Blocks; rewrites to `os.environ[...]`               |
+| 2  | `DATABASE_URL` with a password in a connection string                    | Yes, but this is glue code       | Blocks; rewrites, names `DATABASE_URL`              |
+| 3  | `.env` staged by accident                                                | Irrelevant — it is a local file | Unstages, gitignores, writes `.env.example`         |
 | 4  | Internal employee email + employee ID in a test fixture                    | **Vault does nothing**     | Blocks; synthetic replacement                        |
 | 5  | Aadhaar/PAN/card number in fixtures or logs                                | **Vault does nothing**     | Checksum-validated block (DPDP/GDPR)                 |
-| 6  | Bootstrap token for the vault itself in a Dockerfile`ENV`                | The secret-zero gap⁵            | Blocks; suggests build secrets/runtime env           |
+| 6  | Bootstrap token for the vault itself in a Dockerfile `ENV`                | The secret-zero gap⁵            | Blocks; suggests build secrets/runtime env           |
 | 7  | RPA/UiPath credentials committed for a bot to read                         | Yes, but bypassed                | Blocks; points to Orchestrator credential assets     |
 | 8  | AI agent writes a key into code and commits it                             | Vault unaware                    | Same hook, no extra setup (agents use git)           |
-| 9  | Developer bypasses with`--no-verify`                                     | —                               | Pre-push hook catches it before it leaves the laptop |
+| 9  | Developer bypasses with `--no-verify`                                     | —                               | Pre-push hook catches it before it leaves the laptop |
 | 10 | Someone's machine has no ZeroTrace                                         | —                               | CI`zerotrace scan --range` + push protection       |
 
 ## 8. Answering the objection, on stage, in 30 seconds
