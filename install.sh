@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ZeroTrace one-command bootstrap installer for macOS and Linux.
 #
-#   install:    curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
-#   uninstall:  curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash -s -- --uninstall
+#   install:    curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
+#   uninstall:  curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash -s -- --uninstall
 #   (from a clone: ./install.sh   /   ./install.sh --uninstall)
 #
 # Does NOT assume pip, pipx, uv or any Python packaging tool is already
