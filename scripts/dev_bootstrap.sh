@@ -9,7 +9,7 @@
 #   cd Code-of-Duty
 #   ./scripts/dev_bootstrap.sh
 #
-# Sets up .venv, installs zerotrace in editable dev+llm mode, enables the
+# Sets up .venv, installs the locked dev dependencies and zerotrace (editable), enables the
 # global git hook on this machine, runs doctor, then runs the full test
 # suite - so both contributors can confirm a checkout is healthy the same way.
 set -euo pipefail
@@ -32,9 +32,11 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-info "Installing zerotrace (editable, dev+llm extras)"
-python -m pip install --upgrade pip --quiet
-pip install -e ".[dev,llm]" --quiet
+info "Installing the locked dev dependencies, then zerotrace (editable)"
+# The same install CI runs: exact, hash-checked wheels from requirements/dev.txt (so nothing runs
+# setup code while installing), then this checkout with no index and no build isolation.
+python -m pip install --quiet --require-hashes --only-binary :all: -r requirements/dev.txt
+python -m pip install --quiet --no-deps --no-build-isolation --no-index --only-binary :all: -e .
 
 info "Enabling the global git hook"
 zerotrace install --global || warn "install --global reported an issue, see output above"
