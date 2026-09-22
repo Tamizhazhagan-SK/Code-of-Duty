@@ -22,7 +22,7 @@ from ..audit import exceptions as audit_exceptions
 from ..audit import log as audit_log
 from ..audit.fingerprint import of_finding
 from ..classifier.redact import redact
-from ..policy.engine import Decision
+from ..policy.engine import Decision, by_priority
 from ..remediation import applier, proposer
 from .terminal import decided_by
 from .tui_common import (
@@ -160,7 +160,8 @@ class ReviewApp(ListDetailApp[Row]):
 
     def __init__(self, decisions: list, cfg) -> None:
         super().__init__()
-        self.rows = [Row(decision) for decision in decisions]
+        # Same order as the inline table and panels: blocking before warning, most severe first.
+        self.rows = [Row(decision) for decision in by_priority(decisions)]
         self.cfg = cfg
         self.hide_resolved = False
 

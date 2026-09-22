@@ -134,8 +134,9 @@ def review(args) -> int:
 
 
 def _decisions_to_json(decisions, commit: str = "") -> list[dict]:
+    from .policy.engine import by_priority
     out = []
-    for d in decisions:
+    for d in by_priority(decisions):         # the same order the text report uses
         f = d.finding
         out.append({
             "commit": commit or None, "path": f.path, "line": f.line_no, "rule": f.rule_id,

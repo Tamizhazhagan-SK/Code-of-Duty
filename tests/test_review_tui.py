@@ -457,3 +457,10 @@ async def test_recording_an_exception_names_the_rule_and_file(repo, fake):
         await pilot.pause()
     (entry,) = audit_exceptions.listing()
     assert (entry.rule_id, entry.path) == ("stripe-live-key", "pay.py")
+
+
+async def test_the_reviewer_lists_findings_in_priority_order(repo):
+    """Same order as the inline table and panels: blocking first, most severe first."""
+    from .test_priority import EXPECTED, MIXED
+    app = ReviewApp(list(reversed(MIXED)), load_config())
+    assert [row.decision.finding.rule_id for row in app.rows] == EXPECTED
