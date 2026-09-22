@@ -46,6 +46,54 @@ python scripts/lock_deps.py --upgrade    # move every pin to the newest allowed 
 `tests/test_locks.py` fails when a lock no longer satisfies `pyproject.toml`, so a forgotten
 re-lock shows up in CI rather than as a silently older dependency.
 
+## Releasing
+
+Releases are automated by `.github/workflows/release.yml`. As you work, add user-facing
+changes under `## [Unreleased]` in `CHANGELOG.md`: that is where the release notes come from,
+and a release with an empty `[Unreleased]` is refused.
+
+**The usual way: the button.** GitHub → **Actions** → **release** → **Run workflow**, branch
+`main`, then choose:
+
+| Choice | When | Example |
+|---|---|---|
+| `patch` | fixes only | 0.2.0 → 0.2.1 |
+| `minor` | new features, nothing breaks | 0.2.0 → 0.3.0 |
+| `major` | something existing users rely on changes | 0.2.0 → 1.0.0 |
+
+Add a one-line summary if you like; it goes into the commit and tag message. The workflow
+commits `chore: prepare vX.Y.Z - summary` to main, runs the full suite, builds the three
+binaries, pushes the annotated tag `vX.Y.Z` and publishes the release.
+
+**From the command line** (the same result, if you prefer to review the bump first):
+
+```bash
+python scripts/release.py bump minor            # or patch / major / an exact 1.0.0
+git commit -am "chore: prepare v0.3.0 - one-line summary"
+git push                                        # a new version on main starts the release
+```
+
+**By hand**, as before: push an annotated `vX.Y.Z` tag that matches `pyproject.toml`.
+
+A version that already has its release is skipped, so re-running is harmless. If a release
+run fails half-way, fix forward with the next patch version; never move a tag that has been
+pushed.
+
+### One-time repository settings
+
+Nothing to add: the workflow uses the built-in `GITHUB_TOKEN` and asks for write access only in
+the two jobs that need it. Check these once:
+
+- **Settings → Actions → General → Actions permissions**: actions must be allowed to run (they
+  already are if CI runs).
+- **Settings → Actions → General → Workflow permissions**: "Read repository contents" is fine
+  for this repository, because the jobs request `contents: write` themselves. If an
+  organisation policy caps that, choose "Read and write permissions".
+- **Branch protection or rulesets on `main`**: if pushes to `main` require a pull request, the
+  button cannot commit the version bump. Either let *GitHub Actions* bypass the rule, or use
+  the command-line way through a pull request (merging it starts the release).
+- **Tag rulesets**: if tags matching `v*` are protected, allow GitHub Actions to create them.
+
 ## Tests you must add for a new detector
 
 - a true-positive fixture, a placeholder false-positive fixture, and a policy test
