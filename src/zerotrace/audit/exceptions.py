@@ -9,15 +9,33 @@ Two stores, read in this order:
    `[E]` flow writes, so nobody is forced to commit a file mid-commit; `zerotrace exceptions
    --promote` moves entries into the shared file when they are ready to be reviewed.
 
-Both store fingerprints only (rule + path + hash of the line), never values, and both expire.
+Both are keyed by fingerprint (rule + path + hash of the line), never by value, and both
+expire. Newer entries also name the rule and the file, so a reviewer can tell what an entry
+covers without reverse-engineering a hash.
 """
 import json
 import os
+from collections.abc import Collection
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from .. import gitutil
 
 SHARED_FILE = ".zerotrace-exceptions.json"
+SHARED, LOCAL = "shared", "local"
+
+
+@dataclass(frozen=True)
+class Entry:
+    """One exception, as `zerotrace exceptions` lists it."""
+    scope: str                  # SHARED | LOCAL
+    fingerprint: str
+    reason: str
+    created_at: str
+    expires_at: str
+    active: bool
+    rule_id: str = ""           # empty for entries recorded before they were stored
+    path: str = ""
 
 
 def shared_path() -> str:
@@ -28,14 +46,26 @@ def local_path() -> str:
     return os.path.join(gitutil.state_dir(), "exceptions.json")
 
 
+def _path_for(scope: str) -> str:
+    if scope == SHARED:
+        return shared_path()
+    if scope == LOCAL:
+        return local_path()
+    raise ValueError(f"unknown exception scope: {scope!r}")
+
+
 def _read(path: str) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return {}
-    entries = data.get("exceptions", data)          # tolerate both shapes
-    return entries if isinstance(entries, dict) else {}
+    entries = data.get("exceptions", data) if isinstance(data, dict) else {}  # tolerate both shapes
+    if not isinstance(entries, dict):
+        return {}
+    # The shared file arrives through pull requests, so its shape is not trusted: anything
+    # that is not an object cannot be an exception.
+    return {key: value for key, value in entries.items() if isinstance(value, dict)}
 
 
 def _write(path: str, entries: dict, shared: bool) -> None:
@@ -52,22 +82,32 @@ def _write(path: str, entries: dict, shared: bool) -> None:
         f.write("\n")
 
 
-def _entry(reason: str, ttl_days: int) -> dict:
+def _entry(reason: str, ttl_days: int, rule_id: str, path: str) -> dict:
     now = datetime.now(UTC)
-    return {
+    entry = {
         "reason": reason,
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(days=ttl_days)).isoformat(),
     }
+    if rule_id:
+        entry["rule_id"] = rule_id
+    if path:
+        entry["path"] = path
+    return entry
 
 
-def add(fingerprint: str, reason: str, ttl_days: int, shared: bool = False) -> str:
-    """Record an exception. Returns the path it was written to."""
-    path = shared_path() if shared else local_path()
-    entries = _read(path)
-    entries[fingerprint] = _entry(reason, ttl_days)
-    _write(path, entries, shared)
-    return path
+def add(fingerprint: str, reason: str, ttl_days: int, shared: bool = False, *,
+        rule_id: str = "", path: str = "") -> str:
+    """Record an exception. Returns the file it was written to.
+
+    `rule_id` and `path` say which finding the exception covers, for whoever reviews or
+    browses it later. Matching never uses them (the fingerprint does that).
+    """
+    target = shared_path() if shared else local_path()
+    entries = _read(target)
+    entries[fingerprint] = _entry(reason, ttl_days, rule_id, path)
+    _write(target, entries, shared)
+    return target
 
 
 def _active(entry: dict) -> bool:
@@ -85,24 +125,31 @@ def is_active(fingerprint: str) -> bool:
     return False
 
 
-def listing() -> list[dict]:
-    """Every exception in both stores, newest first, for `zerotrace exceptions`."""
-    rows = []
-    for scope, path in (("shared", shared_path()), ("local", local_path())):
-        for fingerprint, entry in _read(path).items():
-            rows.append({
-                "scope": scope, "fingerprint": fingerprint,
-                "reason": entry.get("reason", ""),
-                "expires_at": entry.get("expires_at", ""),
-                "active": _active(entry),
-            })
-    return sorted(rows, key=lambda row: row["expires_at"], reverse=True)
+def listing() -> list[Entry]:
+    """Every exception in both stores, the latest expiry first."""
+    rows = [
+        Entry(scope=scope, fingerprint=fingerprint,
+              reason=str(entry.get("reason", "")),
+              created_at=str(entry.get("created_at", "")),
+              expires_at=str(entry.get("expires_at", "")),
+              active=_active(entry),
+              rule_id=str(entry.get("rule_id", "")),
+              path=str(entry.get("path", "")))
+        for scope in (SHARED, LOCAL)
+        for fingerprint, entry in _read(_path_for(scope)).items()
+    ]
+    return sorted(rows, key=lambda row: row.expires_at, reverse=True)
 
 
-def promote() -> tuple[int, str]:
-    """Move every still-active local exception into the shared, reviewable file."""
+def promote(fingerprints: Collection[str] | None = None) -> tuple[int, str]:
+    """Move still-active local exceptions into the shared, reviewable file.
+
+    All of them by default, or only those in `fingerprints`. Expired entries stay where they
+    are: an out-of-date reason is not something to put in front of a reviewer.
+    """
     local = _read(local_path())
-    movable = {k: v for k, v in local.items() if _active(v)}
+    movable = {key: value for key, value in local.items()
+               if _active(value) and (fingerprints is None or key in fingerprints)}
     if not movable:
         return 0, shared_path()
     shared = _read(shared_path())
@@ -112,15 +159,26 @@ def promote() -> tuple[int, str]:
     return len(movable), shared_path()
 
 
+def revoke(fingerprint: str, scope: str) -> bool:
+    """Delete one exception, so the finding it covered blocks again. Returns whether it existed."""
+    target = _path_for(scope)
+    entries = _read(target)
+    if entries.pop(fingerprint, None) is None:
+        return False
+    _write(target, entries, shared=scope == SHARED)
+    return True
+
+
 def prune() -> int:
     """Drop expired entries from both stores. Returns how many were removed."""
     removed = 0
-    for path, shared in ((shared_path(), True), (local_path(), False)):
-        entries = _read(path)
+    for scope in (SHARED, LOCAL):
+        target = _path_for(scope)
+        entries = _read(target)
         if not entries:
             continue
-        keep = {k: v for k, v in entries.items() if _active(v)}
+        keep = {key: value for key, value in entries.items() if _active(value)}
         removed += len(entries) - len(keep)
         if len(keep) != len(entries):
-            _write(path, keep, shared)
+            _write(target, keep, shared=scope == SHARED)
     return removed

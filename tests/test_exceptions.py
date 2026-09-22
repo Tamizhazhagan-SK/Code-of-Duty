@@ -3,6 +3,8 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 from zerotrace.audit import exceptions
 
 from .conftest import write
@@ -70,8 +72,57 @@ def test_prune_drops_only_expired_entries(repo):
 def test_listing_reports_both_scopes(repo):
     exceptions.add(_fingerprint("l"), "local one", ttl_days=5)
     exceptions.add(_fingerprint("s"), "shared one", ttl_days=5, shared=True)
-    scopes = {row["scope"] for row in exceptions.listing()}
-    assert scopes == {"local", "shared"}
+    scopes = {row.scope for row in exceptions.listing()}
+    assert scopes == {exceptions.LOCAL, exceptions.SHARED}
+
+
+def test_new_entries_name_the_rule_and_file_but_never_the_value(repo, fake):
+    value = fake.stripe_live()
+    exceptions.add(_fingerprint("m"), "vendor sample", ttl_days=5,
+                   rule_id="stripe-live-key", path="pay.py")
+    (row,) = exceptions.listing()
+    assert (row.rule_id, row.path, row.reason) == ("stripe-live-key", "pay.py", "vendor sample")
+    with open(exceptions.local_path(), encoding="utf-8") as f:
+        assert value not in f.read()
+
+
+def test_old_entries_without_rule_or_file_still_list(repo):
+    write(exceptions.shared_path(), json.dumps({"exceptions": {_fingerprint("o"): {
+        "reason": "from v0.1", "expires_at": "2999-01-01T00:00:00+00:00"}}}))
+    (row,) = exceptions.listing()
+    assert row.active and row.rule_id == "" and row.path == ""
+
+
+def test_promote_can_move_a_single_exception(repo):
+    first, second = _fingerprint("one"), _fingerprint("two")
+    exceptions.add(first, "ready for review", ttl_days=5)
+    exceptions.add(second, "still local", ttl_days=5)
+    moved, _ = exceptions.promote([first])
+    assert moved == 1
+    scopes = {row.fingerprint: row.scope for row in exceptions.listing()}
+    assert scopes == {first: exceptions.SHARED, second: exceptions.LOCAL}
+
+
+def test_revoke_removes_one_exception_from_one_store(repo):
+    fp = _fingerprint("gone")
+    exceptions.add(fp, "no longer true", ttl_days=5, shared=True)
+    assert exceptions.revoke(fp, exceptions.SHARED) is True
+    assert not exceptions.is_active(fp)
+    assert exceptions.revoke(fp, exceptions.SHARED) is False, "revoking twice changes nothing"
+
+
+def test_revoke_refuses_an_unknown_scope(repo):
+    with pytest.raises(ValueError):
+        exceptions.revoke(_fingerprint(), "everywhere")
+
+
+def test_a_malformed_shared_file_is_not_trusted(repo):
+    """The shared file arrives through pull requests; a non-object entry is not an exception."""
+    write(exceptions.shared_path(), json.dumps({"exceptions": {_fingerprint("x"): "yes"}}))
+    assert not exceptions.is_active(_fingerprint("x"))
+    assert exceptions.listing() == []
+    write(exceptions.shared_path(), json.dumps(["not", "an", "object"]))
+    assert exceptions.listing() == []
 
 
 def test_exceptions_cli_lists_and_promotes(repo):

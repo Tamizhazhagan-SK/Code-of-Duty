@@ -16,7 +16,8 @@ from zerotrace import pipeline
 from zerotrace.audit import exceptions as audit_exceptions
 from zerotrace.collectors.staged_diff import collect_staged
 from zerotrace.config import load_config
-from zerotrace.ui.tui import ConfirmScreen, HelpScreen, ReasonScreen, ReviewApp
+from zerotrace.ui.tui import ReasonScreen, ReviewApp
+from zerotrace.ui.tui_common import ConfirmScreen, HelpScreen
 
 from .conftest import git, write
 
@@ -284,3 +285,175 @@ async def test_a_dumb_terminal_gets_the_inline_flow(monkeypatch):
     assert cli._tui_available() is False
     monkeypatch.setenv("TERM", "xterm-256color")
     assert cli._tui_available() is True
+
+
+def _plain(app) -> str:
+    """The detail pane as the developer reads it: markup applied, styles dropped."""
+    from textual.widgets import Static
+    return str(app.query_one("#detail_body", Static).render())
+
+
+def _two_findings(fake) -> tuple[list, object]:
+    write("a.py", f'KEY = "{fake.stripe_live()}"\n')
+    write("b.py", f'TOKEN = "{fake.github()}"\n')
+    git("add", "-A")
+    cfg = load_config()
+    return [d for d in pipeline.scan(collect_staged(), cfg, use_model=False)
+            if d.action in ("block", "warn")], cfg
+
+
+async def test_capital_q_leaves_too(repo, fake):
+    """The status line says 'press Q'; the capital used to be unbound."""
+    decisions, cfg, _ = _staged(repo, fake)
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test() as pilot:
+        await pilot.press("Q")
+        await pilot.pause()
+    assert app.return_value == 1
+
+
+async def test_bracketed_code_is_shown_as_written_not_read_as_markup(repo, fake):
+    """Unescaped, `cfg[api_key]` vanished from the pane, a Next.js `[slug]` directory lost its
+    name, and a `[/]` in the staged line crashed the whole app."""
+    value = fake.stripe_live()
+    write("app/[slug]/pay.py", f'cfg[api_key] = "{value}"  # [/] [bold]\n')
+    git("add", "-A")
+    cfg = load_config()
+    decisions = [d for d in pipeline.scan(collect_staged(), cfg, use_model=False)
+                 if d.action in ("block", "warn")]
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        shown = _plain(app)
+    assert "cfg[api_key]" in shown and "# [/] [bold]" in shown
+    assert "app/[slug]/pay.py" in shown
+    assert value not in shown
+
+
+async def test_enter_opens_the_actions_and_the_arrow_keys_choose_one(repo, fake):
+    decisions, cfg, value = _staged(repo, fake)
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.focused.id == "do-fix_reference", "the recommended fix takes the focus"
+        await pilot.press("down")
+        await pilot.pause()
+        assert app.focused.id == "do-fix_placeholder"
+        await pilot.press("enter")
+        await pilot.pause()
+    staged = git("show", ":pay.py").stdout
+    assert value not in staged and staged.startswith('KEY = "<')
+
+
+async def test_right_arrow_opens_the_actions_and_escape_goes_back(repo, fake):
+    """Esc inside the actions returns to the list; it does not abort the review."""
+    decisions, cfg, _ = _staged(repo, fake)
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("right")
+        await pilot.pause()
+        assert app.focused.id == "do-fix_reference"
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.focused is app.table and app.is_running
+
+
+async def test_clicking_an_action_applies_it(repo, fake):
+    decisions, cfg, value = _staged(repo, fake)
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.click("#do-fix_reference")
+        await pilot.pause()
+    staged = git("show", ":pay.py").stdout
+    assert value not in staged and "os.environ[" in staged
+
+
+async def test_clicking_a_row_selects_that_finding(repo, fake):
+    decisions, cfg = _two_findings(fake)
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.click("#findings", offset=(6, 2))        # row 0 is the header
+        await pilot.pause()
+        assert app.table.cursor_row == 1
+        assert app.listed[1].decision.finding.path in _plain(app)
+
+
+async def test_only_the_actions_that_apply_are_offered(repo, fake):
+    """A composed secret has nothing to rewrite automatically, so only E is offered."""
+    key = fake.stripe_live()
+    write("c.py", f'a = "{key[:17]}"\nb = "{key[17:]}"\nstripe_key = a + b\n')
+    git("add", "-A")
+    cfg = load_config()
+    decisions = [d for d in pipeline.scan(collect_staged(), cfg, use_model=False)
+                 if d.action in ("block", "warn")]
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        shown = {button.id for button in app.query(".action") if button.display}
+    assert shown == {"do-exception"}
+
+
+async def test_the_confirmation_answers_arrow_keys_and_enter(repo, fake):
+    decisions, cfg = _two_findings(fake)
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("F")
+        await pilot.pause()
+        assert app.focused.id == "yes"
+        await pilot.press("right")
+        await pilot.pause()
+        assert app.focused.id == "no"
+        await pilot.press("enter")                      # Cancel
+        await pilot.pause()
+        assert all(row.state == "open" for row in app.rows)
+
+        await pilot.press("F")
+        await pilot.pause()
+        await pilot.press("enter")                      # Apply, focused by default
+        await pilot.pause()
+    assert all(row.state == "fixed" for row in app.rows)
+
+
+async def test_the_help_screen_closes_with_a_click(repo, fake):
+    decisions, cfg, _ = _staged(repo, fake)
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("question_mark")
+        await pilot.pause()
+        assert isinstance(app.screen, HelpScreen)
+        await pilot.click("#close")
+        await pilot.pause()
+        assert not isinstance(app.screen, HelpScreen)
+
+
+async def test_the_reason_dialog_reaches_its_buttons_with_the_arrow_keys(repo, fake):
+    decisions, cfg, _ = _staged(repo, fake)
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("E")
+        await pilot.pause()
+        await pilot.press("down")
+        await pilot.pause()
+        assert app.focused.id == "ok"
+        await pilot.press("right")
+        await pilot.pause()
+        assert app.focused.id == "cancel"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert not isinstance(app.screen, ReasonScreen)
+    assert app.rows[0].state == "open"
+
+
+async def test_recording_an_exception_names_the_rule_and_file(repo, fake):
+    decisions, cfg, _ = _staged(repo, fake)
+    app = ReviewApp(decisions, cfg)
+    async with app.run_test() as pilot:
+        await pilot.press("E")
+        await pilot.pause()
+        for char in "sample":
+            await pilot.press(char)
+        await pilot.press("enter")
+        await pilot.pause()
+    (entry,) = audit_exceptions.listing()
+    assert (entry.rule_id, entry.path) == ("stripe-live-key", "pay.py")

@@ -22,9 +22,9 @@ a = Analysis(
     hookspath=[],
     runtime_hooks=[],
     # The binary is the guardrail: hook, scan, doctor. The release job installs `.[dev]`, which
-    # now pulls in textual, and PyInstaller would follow the lazy `ui.tui` import and bundle it
-    # half-working (textual.widgets loads its modules dynamically). Leave it out, so the
-    # binary's `review` takes the inline flow.
+    # now pulls in textual, and PyInstaller would follow the lazy `ui.tui*` imports and bundle
+    # it half-working (textual.widgets loads its modules dynamically). Leave it out, so the
+    # binary's `review` takes the inline flow and `-i` falls back to the plain report.
     excludes=["textual"],
     noarchive=False,
 )

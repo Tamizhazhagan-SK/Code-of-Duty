@@ -95,11 +95,12 @@ def run(tier: str = "auto") -> int:
         decisions = _sample_decisions()
         terminal.headless_report(decisions, Config())
 
-        _section(console, "4. fix preview and prompt")
+        _section(console, "4. fix preview and menu")
+        from . import menu
         from .terminal import _offer_choices
-        _offer_choices(decisions[0], Config())
-        console.print("[V] env/vault reference  [R] safe placeholder  [E]xception  [A]bort "
-                      "[dim](not asking: this is a preview)[/]")
+        options = _offer_choices(decisions[0], Config())
+        console.print(menu.preview("How should this finding be resolved?", options, console))
+        console.print("[dim](not asking: this is a preview)[/]")
 
         _section(console, "5. install progress bar")
         bar = Bar(4)

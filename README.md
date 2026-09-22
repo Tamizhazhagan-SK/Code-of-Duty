@@ -101,7 +101,8 @@ escape the global install is flagged by `zerotrace doctor` and patched in place 
 | `zerotrace review`                                            | fix a headless block (VS Code, GUI) interactively — full-screen when a terminal and `textual` are installed, the inline flow otherwise |
 | `zerotrace scan --range A..B` / `--all`                     | CI / PR backstop, onboarding scan (`--format json`)                           |
 | `zerotrace init`                                              | repo `.zerotrace.yml` + hashed `.secrets.baseline` for pre-existing findings |
-| `zerotrace doctor [--pin-model] [--warm]`                     | health check, model integrity pin, warm-up                                      |
+| `zerotrace doctor [-i] [--pin-model] [--warm]`                | health check, model integrity pin, warm-up; `-i` is the full-screen view with the fixes one key away |
+| `zerotrace exceptions [-i \| --promote \| --prune]`           | list exceptions; `-i` browses, promotes and revokes them full-screen             |
 | `zerotrace eval`                                              | precision and latency of the AI tie-break on labelled synthetic cases           |
 | `zerotrace ui [--tier auto\|unicode\|ascii\|text\|all]`        | render every screen to check a terminal (CMD, PowerShell, Windows Terminal, IDEs) |
 | `zerotrace gateway`                                           | sanitize an AI-agent / MCP-tool / RAG payload read from stdin                   |
@@ -149,27 +150,46 @@ PII · `[U]` unstage + `.gitignore` + keys-only `.env.example` · `[E]` time-bou
 exception · `[A]` abort. Fixes are written to the **index** and mirrored to the work tree
 only when the line matches, so unrelated unstaged edits are never swept into the commit.
 
-## Full-screen review
+The hook asks with a small menu under the finding, drawn inline so your scrollback stays
+intact. Choose with `↑`/`↓` (or `j`/`k`, `Tab`) and `Enter`, type the letter and press `Enter`,
+or click an option; the recommended fix is highlighted first. It works the same on macOS,
+Linux and Windows, including the legacy Windows console, through `prompt_toolkit`. Keys typed
+while the scan ran are discarded, so a stray `Enter` never picks an option you have not seen.
+Where a menu cannot be drawn (`TERM=dumb`, piped input) the same question is asked as a typed
+prompt.
 
-`zerotrace review` opens a full-screen Textual app when a terminal is available and the `tui`
-extra is installed (`pip install "zerotrace[tui]"`, `textual>=8.0`): a findings table on the
-left, a detail pane on the right showing the proposed fix as a red/green diff, and a docked
-status line tracking how many findings are still open. Recording an `[E]` exception opens a
-modal that requires a written reason before it is saved.
+## Full-screen apps
 
-The same keys work in either case: `V` env-or-vault reference, `R` safe placeholder, `U` unstage
-+ gitignore, `E` time-bound exception, `F` apply the `V` fix to every remaining finding that has
-one (it asks first, because several files change at once), `O` show only what is still open,
-`A` or `Q` leave, `j`/`k` or the arrow keys to move, `?` for the full key list. After a fix the
-cursor moves to the next finding that still needs a decision. Leaving with anything open keeps
-the commit blocked — including `ctrl+q` — and it exits 0 only once every finding is resolved.
+Three commands open a full-screen Textual app when a terminal is available and the `tui` extra
+is installed (`pip install "zerotrace[tui]"`, `textual>=8.0`). They share one layout: a table
+on the left, the chosen row in full on the right, a status line, and the keys in the footer.
 
-Under 80 columns the two panes stack instead of sitting side by side, so a split IDE terminal
-is still usable.
+| Command | What it is for |
+|---|---|
+| `zerotrace review` | resolve the findings holding a commit: the proposed fix as a red/green diff, `V` `R` `U` `E` as above, `F` applies `V` to every finding that has one (after asking), `O` hides what is resolved |
+| `zerotrace doctor -i` | the doctor checks as they finish, what each one means, and its fixes: `R` run again, `W` warm the model, `P` pin its digest, `F` patch a repo's own hook override (each shown only when it applies) |
+| `zerotrace exceptions -i` | both exception stores: `P` promotes a local exception into the reviewed `.zerotrace-exceptions.json`, `D` revokes one, `X` removes the expired ones, `O` hides them |
 
-It falls back automatically to the inline flow above when there is no terminal, when `TERM` is
-`dumb`, or when `textual` is not installed, and `zerotrace review --classic` forces the inline
-flow. The git pre-commit hook
+Every option can be reached three ways. Press its letter, in either case. Or press `Enter` (or
+`→`) on a row to move to the action buttons under the details, choose with `↑`/`↓`, run it
+with `Enter`, and go back with `Esc` or `←`. Or click: rows, buttons and the keys in the footer
+all respond to the mouse. Confirmation dialogs take `←`/`→` and `Enter`, `Y`/`N`, or a click;
+one that cannot be undone, such as revoking an exception, opens with Cancel focused. `?` shows
+every key.
+
+Leaving the reviewer with anything open keeps the commit blocked, including with `ctrl+q`: it
+exits 0 only once every finding is resolved. `doctor -i` exits 1 while a check fails, as
+`zerotrace doctor` does. The panes stack when the window is too narrow to show the list's
+columns beside the details (an 80-column terminal, a split IDE pane). Paths, staged lines and
+reasons are always shown as written: a `[slug]` directory or a `[/]` in code is never read as
+formatting.
+
+`doctor -i` and `exceptions -i` print their plain output instead, with a one-line note, when
+there is no terminal or the `tui` extra is missing.
+
+`zerotrace review` falls back automatically to the inline flow above when there is no terminal,
+when `TERM` is `dumb`, or when `textual` is not installed, and `zerotrace review --classic`
+forces the inline flow. The git pre-commit hook
 deliberately keeps the inline flow rather than opening the full-screen app: Textual takes over
 the whole screen and costs a noticeable import on every start, a hook has to work when git gives
 it no terminal at all, and it must not repaint a developer's scrollback.

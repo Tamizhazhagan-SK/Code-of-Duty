@@ -23,6 +23,9 @@ dependencies = [
   "detect-secrets>=1.5",
   "rich>=13",
   "pyyaml>=6",
+  # The hook's fix menu (arrow keys, Enter, mouse clicks) on every OS, including the legacy
+  # Windows console. Pure Python; imported only when a finding needs a decision.
+  "prompt_toolkit>=3.0.43",
 ]
 
 [project.urls]
@@ -35,9 +38,10 @@ Changelog = "https://github.com/Tamizhazhagan-SK/Code-of-Duty/blob/main/CHANGELO
 # NER-based PII (Presidio + spaCy). Heavy, so opt-in: `policy.pii.engine: presidio`.
 pii-ner = ["presidio-analyzer>=2.2", "presidio-anonymizer>=2.2"]
 llm = []                        # kept for back-compat; the model client is stdlib-only now
-# The full-screen reviewer (`zerotrace review`). The git hook never imports it, so a machine
-# that only wants the guardrail does not pay for it. The floor is the major version the suite
-# runs against.
+# The full-screen apps (`zerotrace review`, `doctor -i`, `exceptions -i`). The git hook never
+# imports them, so a machine that only wants the guardrail does not pay for it. The floor is
+# the major version the suite runs against: the apps use Textual's own markup (2.0+) and the
+# 8.x widget API.
 tui = ["textual>=8.0"]
 # Pillow is only for scripts/render_logo_assets.py (offline asset generation);
 # the runtime logo renderer (ui/logo.py) never imports it.

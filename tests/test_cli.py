@@ -133,3 +133,30 @@ def test_outside_a_repo_the_hook_is_a_no_op(tmp_path, monkeypatch, git_env):
     gitutil._toplevel.cache_clear()
     assert run("run") == 0
     assert run("scan") == 2
+
+
+@pytest.mark.parametrize("command", [("doctor", "-i"), ("exceptions", "-i")])
+def test_full_screen_flags_fall_back_to_plain_output_without_a_terminal(repo, capsys, command):
+    """`-i` in a pipe or CI log: say why, then print what the plain command prints."""
+    assert run(*command) in (0, 1)
+    captured = capsys.readouterr()
+    assert "-i needs an interactive terminal" in captured.err
+    assert captured.out.strip(), "the plain report is printed instead"
+
+
+def test_the_exception_listing_shows_rule_and_file(repo, capsys):
+    from zerotrace.audit import exceptions
+    exceptions.add("f" * 64, "vendor [sample] key", 7, rule_id="stripe-live-key", path="pay.py")
+    assert run("exceptions") == 0
+    out = capsys.readouterr().out
+    assert "stripe-live-key" in out and "pay.py" in out
+    assert "vendor [sample] key" in out, "a reason is printed as typed, not read as markup"
+
+
+def test_a_closed_stdin_at_the_prompt_is_an_abort_not_an_internal_error(repo, capsys, monkeypatch):
+    write("pay.py", f'KEY = "{Fake.stripe_live()}"\n')
+    git("add", "-A")
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))       # EOF as soon as it asks
+    assert run("review", "--classic") == 1
+    err = capsys.readouterr().err
+    assert "Nothing was committed" in err and "internal error" not in err

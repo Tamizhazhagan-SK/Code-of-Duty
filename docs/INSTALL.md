@@ -81,6 +81,7 @@ reasonable way to test a machine. After each cycle:
 
 ```bash
 zerotrace doctor      # is this repo actually protected? which hooks path won?
+zerotrace doctor -i   # the same checks full-screen, with the fixes one key away (tui extra)
 git config --global core.hooksPath   # empty after an uninstall
 ```
 
@@ -109,6 +110,12 @@ What ZeroTrace does automatically:
 | legacy `cmd.exe`, PowerShell 5.1 (cp437/cp1252)             | ASCII mark, ASCII box borders, `+`/`x` instead of `✓`/`✗`           |
 | redirected output, CI logs, `NO_COLOR`                      | no colour, no image escapes, no in-place redraw                              |
 | narrow terminals (< 60 columns)                              | smaller mark, then wordmark only                                             |
+
+Keyboard and mouse: the hook's fix menu and the full-screen apps take `↑`/`↓` and `Enter`
+in every interactive terminal, and a click wherever the terminal reports mouse events —
+Windows Terminal, iTerm2, VS Code and JetBrains terminals all do. On the legacy Windows console
+the menu reads clicks through the console's native input API, so no terminal setting is needed.
+Where nothing can be drawn (`TERM=dumb`, piped input) the menu becomes a typed prompt.
 
 If something still looks wrong, `zerotrace ui` prints the detected capabilities (encoding,
 colour system, size, relevant environment variables) — include that output in a bug report.

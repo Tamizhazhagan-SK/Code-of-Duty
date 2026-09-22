@@ -37,8 +37,35 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   finding after each fix. Under 80 columns the panes stack. Falls back to the inline flow
   when there is no terminal, when `TERM=dumb`, or when `textual` is not installed;
   `--classic` forces it. Install with `pip install "zerotrace[tui]"` (`textual>=8.0`).
+- `zerotrace doctor -i`: the doctor checks full-screen (`ui/tui_doctor.py`). Results appear
+  as each check finishes, the pane beside them explains what the check means, and the fixes
+  are one key away when they apply: `R` run again, `W` warm the model, `P` pin its digest,
+  `F` patch a repo's own hook override (the last two ask first). Exits 1 while a check fails.
+- `zerotrace exceptions -i`: browse both exception stores (`ui/tui_exceptions.py`); `P`
+  promotes one local exception into the reviewed file, `D` revokes one (asks first, with
+  Cancel focused), `X` removes the expired ones, `O` hides them.
+- Every option in every full-screen app is also a button under the details: `Enter` or `→`
+  on a row moves to them, `↑`/`↓` choose, `Enter` runs, `Esc`/`←` goes back, and rows,
+  buttons, dialog buttons and footer keys all respond to a click. Dialogs take `←`/`→`.
+- The hook's fix menu (`ui/menu.py`) takes `↑`/`↓` and `Enter`, the letter then `Enter`, or
+  a mouse click, on macOS, Linux and Windows (legacy console included). It draws inline,
+  erases itself and leaves a one-line record of the choice; it falls back to the typed
+  prompt where a menu cannot be drawn. `zerotrace ui` previews it.
+- Exceptions record the rule id and the file they cover (never the value), so a reviewer can
+  tell what an entry silences; older entries still load. `audit.exceptions` gains `revoke()`,
+  `promote(fingerprints)` for a single entry, and typed `Entry` rows from `listing()`.
 
 ### Changed
+- `prompt_toolkit` is a new runtime dependency (pure Python; its only dependency is
+  `wcwidth`). It is imported only when the hook has a finding to ask about.
+- In the hook's fix menu a bare `Enter` now takes the highlighted option, which is the
+  recommended fix, where it used to mean Abort. Keys typed while the scan ran are discarded
+  first, so a stray `Enter` cannot choose an option nobody has seen.
+- The three full-screen apps share one frame (`ui/tui_common.py`): layout, cursor handling,
+  action buttons, help and `ctrl+q`. The footer shows keys as capitals, as the help and the
+  buttons do, and Textual's command palette is switched off.
+- The panes stack whenever the list could not show all of its columns beside the details,
+  not only under 80 columns. At exactly 80 columns the reviewer's verdict column was cut off.
 - The `tui` extra requires `textual>=8.0` (the version the suite runs against), and the `dev`
   extra now includes it and `pytest-asyncio`; CI checks that both import before testing.
 - The PyInstaller binary leaves `textual` out explicitly, so the binary's `review` keeps the
@@ -67,6 +94,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - CI failed to collect `tests/test_review_tui.py` (`No module named 'textual'`): the `dev`
   extra did not install the `tui` extra. The full-screen tests also skip cleanly on a
   guardrail-only install instead of erroring.
+- Code, paths and reasons containing square brackets were read as formatting, in the inline
+  flow, the full-screen apps, the doctor table and the exception listing: `cfg[api_key]`
+  vanished from the displayed line (so the preview showed a different line from the one
+  written), `app/[slug]/page.tsx` lost its directory, and a `[/]` crashed the hook with an
+  internal error. All such data is escaped now.
+- Capital `Q` did nothing in the reviewer although the status line says "press Q"; `Y`/`N`
+  in confirmations and `Q` in the help screen had the same gap.
+- `doctor --pin-model` reported OK when there was no `.zerotrace.yml` to pin into; it warns.
+- `Ctrl+D` (or a closed stdin) at the fix prompt printed "internal error"; it now reads as an
+  abort, and nothing is committed either way.
+- A malformed entry in the shared exceptions file (a string where an object belongs) could
+  crash the exception listing; such entries are ignored, as they already were for matching.
 
 ## [0.1.0] - 2026-09-17
 First public release.
