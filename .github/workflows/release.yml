@@ -1,23 +1,121 @@
 name: release
-# Tag-triggered release: v1.2.3 -> build, verify, publish a GitHub Release with
-# the sdist/wheel and the bootstrap installers attached. Reruns the same
-# checks CI already did on the tag's commit as a final gate before publishing.
+# Tags and publishes releases by itself. Three ways to start one:
+#
+#   1. The "Run workflow" button (Actions > release): pick patch, minor or major and, if you
+#      like, a one-line summary. The workflow bumps the version everywhere, moves
+#      [Unreleased] in CHANGELOG.md into the new section, commits "chore: prepare vX.Y.Z" to
+#      main, then tags and releases it.
+#   2. Push a commit to main that raises the version (`python scripts/release.py bump minor`,
+#      then commit and push). That version has no tag yet, so it is tagged and released.
+#   3. Push a vX.Y.Z tag by hand, as before.
+#
+# Whichever way, the release commit must pass the full test suite, the three binaries are
+# built, the annotated tag is pushed, and one GitHub Release is published with that version's
+# CHANGELOG section as its notes. A version that is already released is skipped, so an
+# ordinary push or a re-run never publishes twice.
+#
+# It is one workflow rather than "tag, then a second workflow releases" because GitHub does not
+# start workflows for tags or commits pushed with the built-in token: a chained release would
+# silently never run.
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches: [main]
+    paths: [pyproject.toml]       # only a version change can start a release (tags always run)
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to raise
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      summary:
+        description: One line for the release commit and tag (optional)
+        type: string
+        required: false
 
-# Read-only by default: the three binary builds only check out code and upload artifacts (which
-# uses the Actions runtime token, not repository permissions). Write access is granted to the
-# one job that publishes, below, so a compromised build step cannot touch the repository.
+# Read-only by default. Only `bump` (pushes the release commit) and `release` (pushes the tag
+# and publishes) get write access, so no build step can write to the repository.
 permissions:
   contents: read
 
+# One release at a time; a second run waits instead of racing the first for the same tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  bump:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write             # pushes "chore: prepare vX.Y.Z" to main
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Releases are cut from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::run the release workflow on main, not $GITHUB_REF"
+          exit 1
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: "3.12" }
+
+      - name: Raise the version and cut the changelog section
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: python scripts/release.py bump "$BUMP"
+
+      - name: Commit the release to main
+        id: commit
+        env:
+          SUMMARY: ${{ inputs.summary }}
+        run: |
+          set -euo pipefail
+          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          message="chore: prepare v$version"
+          if [ -n "$SUMMARY" ]; then message="$message - $SUMMARY"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --all --message "$message"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  plan:
+    # Runs after `bump` when there is one, straight away otherwise.
+    needs: bump
+    if: ${{ !cancelled() && needs.bump.result != 'failure' }}
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.bump.outputs.sha || github.sha }}
+          fetch-depth: 0          # every tag, to tell whether this version is released yet
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: "3.12" }
+
+      - name: Is there a version to release?
+        id: plan
+        run: |
+          set -euo pipefail
+          python scripts/release.py plan >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   build-binaries:
     # Single-file PyInstaller binaries so a laptop with no Python can still run zerotrace
     # (docs/DEPLOYMENT.md "No Python on laptops"). One per OS; architecture is whatever the
     # runner's default is (e.g. macos-latest is arm64).
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +123,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: "3.12" }
@@ -63,12 +163,19 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: build-binaries
+    needs: [plan, build-binaries]
+    if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
-      contents: write     # `gh release create` publishes the release and uploads its assets
+      contents: write             # pushes the annotated tag and publishes the release
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0          # the tags, and the commit subject for the tag message
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: "3.12" }
@@ -78,22 +185,14 @@ jobs:
           path: binaries
           merge-multiple: true
 
-      - name: Tag must match pyproject.toml version
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          pkg=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          if [ "$tag" != "$pkg" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match pyproject.toml version $pkg"
-            exit 1
-          fi
-
       # Dependencies: exact, hash-checked wheels from the lock (scripts/lock_deps.py writes it),
       # so every file is known in advance and nothing runs setup code while it installs.
       # The project itself comes last, from this checkout: no index, no build isolation.
       - run: 'python -m pip install --require-hashes --only-binary :all: -r requirements/dev.txt'
       - run: 'python -m pip install --no-deps --no-build-isolation --no-index --only-binary :all: -e .'
-      - run: pytest -q
+
+      - name: The release commit must pass the whole suite
+        run: pytest -q
 
       - name: Build sdist and wheel
         run: python -m build --no-isolation     # build + hatchling come from requirements/dev.txt
@@ -110,24 +209,30 @@ jobs:
           print("wheel contents ok")
           PY
 
-      - name: Extract this version's changelog section
+      - name: Release notes from the CHANGELOG
+        run: python scripts/release.py notes "$TAG" > release_notes.md
+
+      - name: Tag the release (annotated), unless the tag was pushed by hand
         run: |
-          python - <<'PY'
-          import pathlib
-          import re
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+            echo "$TAG already exists; not re-tagging"
+          else
+            message=$(python scripts/release.py tag-message "$TAG" "$SHA")
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag --annotate "$TAG" --message "$message" "$SHA"
+            git push origin "refs/tags/$TAG"
+          fi
 
-          tag = "${{ github.ref_name }}".lstrip("v")
-          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
-          pattern = rf"^## \[{re.escape(tag)}\].*?(?=^## \[|\Z)"
-          match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
-          notes = match.group(0).strip() if match else f"Release {tag}"
-          pathlib.Path("release_notes.md").write_text(notes + "\n", encoding="utf-8")
-          PY
-
-      - name: Create GitHub release
+      - name: Publish the GitHub release (once)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* install.sh install.ps1 binaries/* \
-            --title "ZeroTrace $GITHUB_REF_NAME" \
-            --notes-file release_notes.md
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::the $TAG release already exists; nothing to publish"
+            exit 0
+          fi
+          gh release create "$TAG" dist/* install.sh install.ps1 binaries/* \
+            --verify-tag --title "ZeroTrace $TAG" --notes-file release_notes.md
