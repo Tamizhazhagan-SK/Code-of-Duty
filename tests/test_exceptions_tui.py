@@ -1,4 +1,6 @@
 """The exceptions browser, driven through Textual's Pilot. Assertions are on the stores."""
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 pytest.importorskip("textual", reason="install the tui extra to test the exceptions browser")
@@ -7,8 +9,9 @@ pytest.importorskip("pytest_asyncio", reason="pytest-asyncio drives the Textual 
 from textual.widgets import Static
 
 from zerotrace.audit import exceptions as store
+from zerotrace.audit.exceptions import Entry
 from zerotrace.ui.tui_common import ConfirmScreen
-from zerotrace.ui.tui_exceptions import ExceptionsApp
+from zerotrace.ui.tui_exceptions import ExceptionsApp, _expiry_long, _expiry_short
 
 LOCAL_FP, SHARED_FP, EXPIRED_FP = "a" * 64, "b" * 64, "c" * 64
 
@@ -148,3 +151,33 @@ async def test_with_no_exceptions_it_says_how_to_record_one(repo):
         await pilot.press("q")
         await pilot.pause()
     assert app.return_value == 0
+
+
+_NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
+
+
+def _expiring(expires_at: str) -> Entry:
+    return Entry(scope=store.LOCAL, fingerprint=LOCAL_FP, reason="r", created_at="",
+                 expires_at=expires_at, active=False)
+
+
+@pytest.mark.parametrize("left,short,long_", [
+    (timedelta(days=3, hours=2), "in 3 d", "(in 3 days)"),
+    (timedelta(days=1, minutes=1), "in 1 d", "(in 1 day)"),
+    (timedelta(hours=5), "< 1 d", "(within a day)"),
+    (timedelta(0), "expired", "expired 2026-09-22"),      # the expiry instant is expired
+    (timedelta(hours=-5), "expired", "expired"),
+    (timedelta(days=-2, hours=-1), "2 d ago", "expired"),
+])
+def test_expiry_is_described_in_whole_days(left, short, long_):
+    entry = _expiring((_NOW + left).isoformat())
+    assert _expiry_short(entry, _NOW) == short
+    assert long_ in _expiry_long(entry, _NOW)
+
+
+@pytest.mark.parametrize("expires_at", ["2026-10-01T00:00:00", "next tuesday", ""])
+def test_an_unreadable_expiry_is_reported_not_guessed(expires_at):
+    """A date without a timezone, or no date at all, cannot be compared: say so."""
+    entry = _expiring(expires_at)
+    assert _expiry_short(entry, _NOW) == "unknown"
+    assert "cannot be read" in _expiry_long(entry, _NOW)

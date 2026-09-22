@@ -22,6 +22,17 @@ from ..collectors.staged_diff import classify_file
 _WORDS = ["blue", "falcon", "river", "stone", "maple", "orbit", "cedar", "lunar", "quartz"]
 
 
+def _shuffled(items: list[str]) -> list[str]:
+    """Fisher-Yates driven by `secrets`. `SystemRandom().shuffle` would be just as random, but it
+    is a `random.Random` subclass, and a generated password should never read as coming from
+    the non-cryptographic module."""
+    items = list(items)
+    for i in range(len(items) - 1, 0, -1):
+        j = secrets.randbelow(i + 1)
+        items[i], items[j] = items[j], items[i]
+    return items
+
+
 def _gen(spec: str) -> str:
     kind, _, arg = spec.partition(":")
     if kind == "lit":
@@ -40,8 +51,7 @@ def _gen(spec: str) -> str:
                 secrets.choice(string.digits), secrets.choice("!@#%^*-_")]
         core += [secrets.choice(string.ascii_letters + string.digits + "!@#%^*-_")
                  for _ in range(n - 4)]
-        secrets.SystemRandom().shuffle(core)
-        return "".join(core)
+        return "".join(_shuffled(core))
     if kind == "words":
         return "-".join(secrets.choice(_WORDS) for _ in range(n))
     raise ValueError(f"unknown generator {spec}")

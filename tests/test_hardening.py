@@ -77,11 +77,23 @@ def test_private_key_file_detection_still_anchors_correctly():
 
 
 def test_eval_values_use_the_csprng():
+    """Generated values come from `secrets` alone: the `random` module is never imported."""
+    import ast
     import inspect
 
     from zerotrace import evals
-    source = inspect.getsource(evals)
-    assert "random.shuffle" not in source or "SystemRandom" in source
+    tree = ast.parse(inspect.getsource(evals))
+    imported = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import)
+                for alias in node.names}
+    imported |= {node.module for node in ast.walk(tree)
+                 if isinstance(node, ast.ImportFrom) and node.module}
+    assert "random" not in imported
+
+    assert sorted(evals._shuffled(list("abcdef"))) == list("abcdef"), "a permutation, no loss"
+    password = evals._gen("pw:16")
+    assert len(password) == 16
+    assert any(c.islower() for c in password) and any(c.isupper() for c in password)
+    assert any(c.isdigit() for c in password) and any(c in "!@#%^*-_" for c in password)
     assert Fake.github().startswith("ghp_")
 
 
@@ -127,3 +139,23 @@ def test_eval_rejects_a_missing_cases_file():
     from zerotrace import evals
     with pytest.raises(SystemExit):
         evals.load_cases("/nonexistent/cases.jsonl")
+
+
+@pytest.mark.parametrize("value", ["-x", "--upload-pack=touch pwned", "relative/hooks",
+                                   "/hooks\nrm -rf ~", "/hooks\x00"])
+def test_hook_scripts_refuse_anything_but_a_plain_absolute_path(value):
+    """Quoting stops shell injection but not an option-like value (`exec -x`); a path written
+    into a hook script must be absolute and on one line."""
+    with pytest.raises(ValueError):
+        installer._sh_quote(value)
+
+
+@pytest.mark.parametrize("value,quoted", [
+    ("/usr/bin/python3", "/usr/bin/python3"),
+    ("/Users/a b/.venv/bin/python", "'/Users/a b/.venv/bin/python'"),
+    ("C:\\Program Files\\Python312\\python.exe", "'C:/Program Files/Python312/python.exe'"),
+    ("\\\\fileserver\\share\\hooks", "//fileserver/share/hooks"),
+    ("", "''"),
+])
+def test_hook_script_paths_are_quoted_for_sh(value, quoted):
+    assert installer._sh_quote(value) == quoted
