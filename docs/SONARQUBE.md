@@ -44,9 +44,29 @@ to switch to CI-based analysis:
 Keep Automatic Analysis **or** the workflow, never both: two analyses of the same branch
 overwrite each other.
 
+## Which configuration file applies
+
+| Analysis | Reads | Notes |
+|---|---|---|
+| Automatic Analysis (the default today) | `.sonarcloud.properties` | ignores `sonar-project.properties` entirely |
+| CI scanner (`.github/workflows/sonar.yml`) | `sonar-project.properties` | also uploads `coverage.xml` |
+
+Both declare the same sources, `sonar.tests=tests`, the Python versions and the exclusions;
+change them together. Before `.sonarcloud.properties` existed, Automatic Analysis analysed
+`tests/` and `demo/fixtures/` as production code and warned that `sonar.tests` was not set.
+`.github` is listed in `sonar.sources` on purpose: once sources are set explicitly, the
+workflows are only analysed if they are named.
+
+## Supply-chain rules (S8541, S8544)
+
+Every `pip install` in the workflows and bootstrap scripts installs from a hash-pinned lock
+with `--require-hashes --only-binary :all:`, then the project itself with `--no-deps
+--no-build-isolation --no-index`. See CONTRIBUTING.md → Dependencies for regenerating the
+locks.
+
 ## Rules we deliberately do not follow blindly
 
 - `src/zerotrace/detectors/` is full of credential-shaped regexes and keyword lists. That is the
   product, not a leak. Review anything Sonar reports there before excluding it.
 - `tests/` and `demo/fixtures/` hold format-valid **fake** credentials, generated at run time.
-  `sonar-project.properties` marks the former as tests and excludes the latter.
+  Both configuration files mark the former as tests and exclude the latter.
