@@ -228,6 +228,18 @@ def test_pii_findings():
     assert "pii_payment_card" in {f.rule_id for f in _scan("src/p.py", f'card = "{card}"')}
 
 
+def test_digits_inside_a_hex_digest_are_not_pii():
+    """A lock file's `--hash=sha256:…` can hold a checksum-valid 12- or 16-digit run between hex
+    letters; it is part of the digest. (Our own lock files tripped this.)"""
+    aadhaar = _verhoeff_complete("2" + rand(10, "0123456789"))
+    card = _luhn_complete("4539", 16)
+    for embedded in (aadhaar, card):
+        digest = rand(24, "abcdef") + embedded + rand(24, "abcdef")
+        assert _scan("requirements/dev.txt", f"    --hash=sha256:{digest} \\") == []
+    standalone = {f.rule_id for f in _scan("src/kyc.py", f'aadhaar = "{aadhaar}"  # {card}')}
+    assert {"pii_aadhaar", "pii_payment_card"} <= standalone, "a real number is still caught"
+
+
 def test_pii_non_person_emails_are_ignored():
     assert _scan("README.md", "git clone git@github.com:acme/repo.git") == []
     assert _scan("src/mail.py", 'sender = "noreply@acme.io"') == []

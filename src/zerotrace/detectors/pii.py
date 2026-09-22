@@ -18,8 +18,10 @@ _PHONE_CONTEXT_RE = re.compile(r"(?i)(phone|mobile|tel\b|contact|whatsapp|cell)"
 # Internal company-issued identifier: "QX" followed by 5 upper-case alphanumerics.
 _QXID_RE = re.compile(r"\bQX[A-Z0-9]{5}\b")
 _PAN_RE = re.compile(r"\b[A-Z]{3}[ABCFGHLJPT][A-Z][0-9]{4}[A-Z]\b")
-_AADHAAR_RE = re.compile(r"(?<![\d-])[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}(?![\d-])")
-_CARD_RE = re.compile(r"(?<![\d-])(?:\d[ -]?){12,18}\d(?![\d-])")
+# No word character on either side, as for phones: a checksum-valid run of digits inside a hex
+# digest (a lock file's `--hash=sha256:…`, a git object id) belongs to that token, not a person.
+_AADHAAR_RE = re.compile(r"(?<![\w-])[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}(?![\w-])")
+_CARD_RE = re.compile(r"(?<![\w-])(?:\d[ -]?){12,18}\d(?![\w-])")
 _IBAN_RE = re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b")
 
 # Internal/employee email domains -> higher severity than a generic email.
