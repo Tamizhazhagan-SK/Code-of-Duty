@@ -1,15 +1,19 @@
 """`zerotrace doctor`: is this machine/repo actually protected, and is the model trustworthy?
 
 Each check is a small function that appends rows to a Report, so adding a check never grows one
-big function.
+big function. A new check also gets a line in ABOUT, which the full-screen view shows next to
+its result.
 """
 import os
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from . import __version__, gitutil, installer, platform_env
@@ -20,18 +24,83 @@ from .config import Config, load_config
 # encode (a legacy cp437 console gets "+"/"x" instead of "✓"/"✗", not "?").
 OK, WARN, FAIL = "ok", "warn", "fail"
 _STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red"}
-_MODEL_INTEGRITY = "model integrity"
-_MODEL_AVAILABLE = "model available"
+MODEL_INTEGRITY = "model integrity"
+MODEL_AVAILABLE = "model available"
+MODEL_WARM_UP = "model warm-up"
+REPO_OVERRIDE = "repo override"
+REPO_PROTECTED = "this repo protected"
+
+# What each check means and why it matters, in a sentence or two. The table shows only the
+# result; the full-screen view (`zerotrace doctor -i`) shows this beside it.
+ABOUT = {
+    "python": "The Python running ZeroTrace. The hook scripts call it by this absolute path, "
+              "so if the interpreter moves or is removed, the hooks stop running.",
+    "git": "Git itself. The machine-wide install relies on core.hooksPath (git 2.9 or later).",
+    "environment": "Where ZeroTrace is running. Windows and WSL keep separate git "
+                   "configurations, so each side needs its own install.",
+    "WSL interop": "Whether this WSL distro can start Windows programs. Without it, set up "
+                   "the Windows side from Windows.",
+    "repo filesystem": "A repo on a Windows drive (/mnt/<drive>) is slow from WSL and can "
+                       "lose the executable bit on hook scripts.",
+    "system hooksPath": "The hooks directory git uses for every repo of every user. An IT "
+                        "rollout (`install --system`) owns it.",
+    "global hooksPath": "The hooks directory git uses for every repo of this user. "
+                        "`zerotrace install --global` owns it; if another tool does, commits "
+                        "are not scanned.",
+    "system templateDir (fallback)": "Hooks git copies into newly created or cloned repos. "
+                                     "Only a fallback: the hooksPath protects existing repos.",
+    "global templateDir (fallback)": "Hooks git copies into newly created or cloned repos. "
+                                     "Only a fallback: the hooksPath protects existing repos.",
+    "repo": "Repo checks run only inside a git repository.",
+    "repo ownership": "Git refuses to run hooks in a repo owned by another user until it is "
+                      "listed as a safe.directory.",
+    REPO_OVERRIDE: "This repo sets its own core.hooksPath (husky and similar tools do), which "
+                   "replaces the global one. Unless those hooks call ZeroTrace, nothing is "
+                   "scanned here.",
+    REPO_PROTECTED: "Whether a commit in this repo actually runs ZeroTrace, whichever hooks "
+                    "directory wins.",
+    "config layers": "Where the policy came from, lowest first: built-in defaults, the org "
+                     "policy, ~/.zerotrace/config.yml, then this repo's .zerotrace.yml.",
+    "org-locked keys": "Settings your organisation fixed. Repo and user config cannot "
+                       "override them.",
+    "rule pack": "The deterministic detectors. They decide every finding on their own; the "
+                 "model is never asked about a HIGH or CRITICAL one.",
+    "AI tie-break": "The local model settles only ambiguous (MEDIUM) findings. It sees "
+                    "redacted shape features, never a value, and it cannot unblock anything "
+                    "severe.",
+    "model endpoint": "Where the tie-break model is served. A remote endpoint needs "
+                      "allow_remote and https.",
+    MODEL_AVAILABLE: "Whether the model answers. When it does not, ambiguous findings warn "
+                     "instead of being settled: ZeroTrace fails closed.",
+    MODEL_WARM_UP: "Loading the model into memory ahead of time, so the first ambiguous "
+                   "finding does not wait for it.",
+    MODEL_INTEGRITY: "The served model's digest, compared with the one pinned in "
+                     ".zerotrace.yml, so a swapped or tampered model is noticed.",
+    "egress": "What leaves this machine for the model: redacted shape features only.",
+}
+
+
+class Check(NamedTuple):
+    """One row of the report."""
+    status: str             # OK | WARN | FAIL
+    name: str
+    result: str
 
 
 @dataclass
 class Report:
-    rows: list[tuple[str, str, str]] = field(default_factory=list)
+    rows: list[Check] = field(default_factory=list)
     failures: int = 0
+    # Told about each check as it completes, so a live view can show results as they arrive
+    # instead of after the slowest (network) check.
+    listener: Callable[[Check], None] | None = None
 
     def add(self, status: str, check: str, result: str) -> None:
-        self.rows.append((status, check, result))
+        row = Check(status, check, result)
+        self.rows.append(row)
         self.failures += status == FAIL
+        if self.listener is not None:
+            self.listener(row)
 
     def table(self, console: Console | None = None) -> Table:
         marks = glyphs.for_console(console or Console())
@@ -43,14 +112,16 @@ class Report:
         table.add_column("Result", overflow="fold")
         for status, check, result in self.rows:
             mark = f"[{_STATUS_STYLE.get(status, 'white')}]{marks.get(status, status)}[/]"
-            table.add_row(mark, check, glyphs.sanitize(result, console or Console()))
+            # Results quote paths and commands: data, never markup.
+            table.add_row(mark, check, escape(glyphs.sanitize(result, console or Console())))
         return table
 
 
-def _pin_digest(root: str, digest: str) -> str:
+def _pin_digest(root: str, digest: str) -> tuple[bool, str]:
+    """Write the digest into the repo config. Returns (pinned, what happened)."""
     path = os.path.join(root, ".zerotrace.yml")
     if not os.path.exists(path):
-        return "no .zerotrace.yml here (run `zerotrace init` first)"
+        return False, "not pinned: no .zerotrace.yml here (run `zerotrace init` first)"
     with open(path, encoding="utf-8") as f:
         text = f.read()
     if re.search(r"(?m)^(\s+)(digest|sha256):.*$", text):
@@ -61,7 +132,7 @@ def _pin_digest(root: str, digest: str) -> str:
         text += f'\nmodel:\n  digest: "{digest}"\n'
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
-    return f"pinned {digest[:19]}… in .zerotrace.yml"
+    return True, f"pinned {digest[:19]}… in .zerotrace.yml"
 
 
 def _check_toolchain(report: Report) -> None:
@@ -133,10 +204,10 @@ def _check_repo(report: Report) -> None:
     runs = _repo_runs_zerotrace(hooks_dir)
     local = gitutil.config_get(installer.HOOKS_PATH_KEY, "local")
     if local and not installer.is_managed(local):
-        report.add(OK if runs else FAIL, "repo override",
+        report.add(OK if runs else FAIL, REPO_OVERRIDE,
                    f"local {installer.HOOKS_PATH_KEY}={local} overrides global"
                    + ("" if runs else ". Not protected: run `zerotrace doctor --fix`"))
-    report.add(OK if runs else FAIL, "this repo protected",
+    report.add(OK if runs else FAIL, REPO_PROTECTED,
                f"yes (hooks: {hooks_dir})" if runs else
                "no. Run `zerotrace install --global`")
 
@@ -164,19 +235,20 @@ def _check_endpoint(report: Report, cfg: Config) -> None:
 def _check_integrity(report: Report, cfg: Config, digest: str, pin_model: bool) -> None:
     if cfg.model_digest:
         match = digest.startswith(cfg.model_digest.removeprefix("sha256:"))
-        report.add(OK if match else FAIL, _MODEL_INTEGRITY,
+        report.add(OK if match else FAIL, MODEL_INTEGRITY,
                    "served model matches the pinned digest" if match else
                    f"MISMATCH: pinned {cfg.model_digest[:19]}…, served {digest[:19]}…")
     elif pin_model and gitutil.in_repo():
-        report.add(OK, _MODEL_INTEGRITY, _pin_digest(cfg.repo_root, digest))
+        pinned, what = _pin_digest(cfg.repo_root, digest)
+        report.add(OK if pinned else WARN, MODEL_INTEGRITY, what)
     else:
-        report.add(WARN, _MODEL_INTEGRITY, "digest not pinned (`zerotrace doctor --pin-model`)")
+        report.add(WARN, MODEL_INTEGRITY, "digest not pinned (`zerotrace doctor --pin-model`)")
 
 
 def _check_warm(report: Report, cfg: Config) -> None:
     from .classifier import llm
     took = llm.warm(cfg)
-    report.add(OK if took is not None else WARN, "model warm-up",
+    report.add(OK if took is not None else WARN, MODEL_WARM_UP,
                f"loaded and pinned in memory for {cfg.model_keep_alive} ({took:.1f} s)"
                if took is not None else "warm-up failed; the first MEDIUM finding will be slow")
 
@@ -192,11 +264,11 @@ def _check_model(report: Report, cfg: Config, pin_model: bool, warm: bool) -> No
     digest = llm.model_digest(cfg)
     latency = (time.monotonic() - start) * 1000
     if digest is None:
-        report.add(WARN, _MODEL_AVAILABLE,
+        report.add(WARN, MODEL_AVAILABLE,
                    f"{cfg.model_name} not reachable/served ({latency:.0f} ms). MEDIUM findings "
                    "will WARN. Start it: `docker compose -f docker/docker-compose.yml up -d`")
     else:
-        report.add(OK, _MODEL_AVAILABLE, f"{cfg.model_name} · {digest[:19]}… ({latency:.0f} ms)")
+        report.add(OK, MODEL_AVAILABLE, f"{cfg.model_name} · {digest[:19]}… ({latency:.0f} ms)")
         if warm:
             _check_warm(report, cfg)
         _check_integrity(report, cfg, digest, pin_model)
@@ -207,8 +279,15 @@ def _check_model(report: Report, cfg: Config, pin_model: bool, warm: bool) -> No
                "localhost only; proxy env vars bypassed for model calls")
 
 
-def doctor(pin_model: bool = False, warm: bool = False) -> int:
-    report = Report()
+def collect(pin_model: bool = False, warm: bool = False,
+            listener: Callable[[Check], None] | None = None) -> Report:
+    """Run every check and return the results, printing nothing.
+
+    Separate from `doctor()` so the full-screen view can re-run the checks without the
+    table landing in the middle of its screen. `listener` hears about each check as soon as
+    it completes.
+    """
+    report = Report(listener=listener)
     _check_toolchain(report)
     _check_environment(report)
     _check_install(report)
@@ -216,6 +295,11 @@ def doctor(pin_model: bool = False, warm: bool = False) -> int:
     cfg = load_config()
     _check_policy(report, cfg)
     _check_model(report, cfg, pin_model, warm)
+    return report
+
+
+def doctor(pin_model: bool = False, warm: bool = False) -> int:
+    report = collect(pin_model, warm)
     console = Console()
     console.print(report.table(console))
     return 1 if report.failures else 0

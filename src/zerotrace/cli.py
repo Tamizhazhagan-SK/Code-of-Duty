@@ -88,11 +88,23 @@ def run(args) -> int:
 def _tui_available() -> bool:
     """A full-screen app needs a real terminal. TERM=dumb (Emacs shells, some CI pty
     allocators) says it cannot move a cursor, so take it at its word and stay inline."""
-    import os
     from importlib.util import find_spec
     if os.environ.get("TERM", "") in ("dumb", "unknown"):
         return False
     return find_spec("textual") is not None
+
+
+def _full_screen(args) -> bool:
+    """Whether `-i` can be honoured. When it cannot, say why once and print the plain output,
+    which is the same information without the interaction."""
+    if not getattr(args, "interactive", False):
+        return False
+    from .ui.terminal import is_interactive
+    if is_interactive() and _tui_available():
+        return True
+    print('zerotrace: -i needs an interactive terminal and the tui extra '
+          '(pip install "zerotrace[tui]"); printing the plain output instead.', file=sys.stderr)
+    return False
 
 
 def review(args) -> int:
@@ -323,12 +335,16 @@ def doctor_cmd(args) -> int:
         for line in installer.install_repo():
             print(f"zerotrace: {line}")
         return 0
+    if _full_screen(args):
+        from .ui import tui_doctor
+        return tui_doctor.show(pin_model=args.pin_model, warm=args.warm)
     from .doctor import doctor
     return doctor(pin_model=args.pin_model, warm=args.warm)
 
 
 def exceptions_cmd(args) -> int:
     from rich.console import Console
+    from rich.markup import escape
     from rich.table import Table
 
     from .audit import exceptions as audit_exceptions
@@ -343,21 +359,25 @@ def exceptions_cmd(args) -> int:
     if args.prune:
         print(f"zerotrace: removed {audit_exceptions.prune()} expired exception(s).")
         return 0
+    if _full_screen(args):
+        from .ui import tui_exceptions
+        return tui_exceptions.show()
 
     rows = audit_exceptions.listing()
     if not rows:
         print("zerotrace: no exceptions recorded.")
         return 0
     table = Table(title="Exceptions", box=box_for(console))
-    for column in ("scope", "fingerprint", "expires", "state", "reason"):
+    for column in ("scope", "rule", "file", "expires", "state", "reason"):
         table.add_column(column, overflow="fold")
     for row in rows:
-        state = "[green]active[/]" if row["active"] else "[dim]expired[/]"
-        table.add_row(row["scope"], row["fingerprint"][:12], row["expires_at"][:10], state,
-                      row["reason"])
+        state = "[green]active[/]" if row.active else "[dim]expired[/]"
+        # Reasons and paths are typed by people: data, never markup.
+        table.add_row(row.scope, escape(row.rule_id or row.fingerprint[:12]),
+                      escape(row.path or "-"), row.expires_at[:10], state, escape(row.reason))
     console.print(table)
-    console.print("[dim]`--promote` moves local exceptions into the committed, reviewable "
-                  "file; `--prune` drops expired ones.[/]")
+    console.print("[dim]`-i` browses them full-screen; `--promote` moves local exceptions into "
+                  "the committed, reviewable file; `--prune` drops expired ones.[/]")
     return 0
 
 
@@ -429,12 +449,16 @@ def _parser() -> argparse.ArgumentParser:
     d.add_argument("--warm", action="store_true", help="load the model into memory now")
     d.add_argument("--fix", action="store_true",
                    help="patch this repo's local hook override (e.g. husky) that defeats the global install")
+    d.add_argument("-i", "--interactive", action="store_true",
+                   help="full-screen view: results as they arrive, and the fixes one key away")
 
     x = sub.add_parser("exceptions", help="list, promote or prune approved exceptions")
     x_group = x.add_mutually_exclusive_group()
     x_group.add_argument("--promote", action="store_true",
                          help=f"move local exceptions into {audit_exceptions_file()} for review")
     x_group.add_argument("--prune", action="store_true", help="drop expired exceptions")
+    x_group.add_argument("-i", "--interactive", action="store_true",
+                         help="browse, promote and revoke exceptions full-screen")
 
     u = sub.add_parser("ui", help="render every screen so you can check this terminal")
     u.add_argument("--tier", choices=["auto", "png", "card", "unicode", "ascii", "text", "all"],
@@ -484,7 +508,7 @@ def main(argv: list[str] | None = None) -> None:
     }
     try:
         code = handlers[args.command](args)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):       # Ctrl+C, or Ctrl+D / a closed stdin at a prompt
         print("\nzerotrace: interrupted. Nothing was committed.", file=sys.stderr)
         code = 1
     except Exception as exc:  # fail closed: an internal error blocks, never allows

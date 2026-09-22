@@ -29,7 +29,8 @@ git commit ─► global core.hooksPath shim (chains repo/previous hooks, reatta
         4. classifier/batch.py            MEDIUM only: concurrent, cached, one deadline
              redact.py -> prompt.py -> llm.py (Ollama | OpenAI-compatible) -> schema.py
         5. policy/engine.py               BLOCK / WARN / ALLOW (the only decision point)
-        6. ui/terminal.py                 explain -> preview -> [V/R/U/E/A]
+        6. ui/terminal.py + ui/menu.py    explain -> preview -> [V/R/U/E/A] menu (arrows, letter, click)
+           ui/tui*.py (zerotrace review) the same fixes full-screen; tui_common.py is the shared frame
         7. remediation/applier.py         patch the INDEX blob; mirror to work tree if identical
         8. audit/                         hash-chained log + exceptions in .git/zerotrace/
 git push ─► pre-push shim ─► zerotrace pre-push   (every outgoing commit, deterministic only)

@@ -2,6 +2,7 @@
 import sys
 
 from rich.console import Console, Group
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.syntax import Syntax
@@ -12,7 +13,7 @@ from ..audit import exceptions as audit_exceptions
 from ..audit import log as audit_log
 from ..audit.fingerprint import of_finding
 from ..classifier.redact import language_of, redact
-from . import glyphs
+from . import glyphs, menu
 from ..policy.engine import Decision
 from ..remediation import applier, proposer
 from . import logo as logo_render
@@ -107,10 +108,12 @@ def _summary_table(decisions) -> Table:
         sev = _SEVERITY_STYLE.get(f.severity, "")
         act = _ACTION_STYLE.get(decision.action, "")
         bar = glyphs.for_console(console)["bar"]
-        cells = [str(index), f"[{sev.split()[-1]}]{bar}[/]", _where(f), f.rule_id,
+        # Paths, rule ids and staged text are data: `app/[slug]/page.tsx` would otherwise
+        # lose its directory to markup, and a stray `[/]` would raise mid-commit.
+        cells = [str(index), f"[{sev.split()[-1]}]{bar}[/]", escape(_where(f)), escape(f.rule_id),
                  f"[{sev}]{f.severity}[/]"]
         if roomy:
-            cells.append(decided_by(decision))
+            cells.append(escape(decided_by(decision)))
         cells.append(f"[{act}]{decision.action.upper()}[/]")
         table.add_row(*cells)
     return table
@@ -119,7 +122,7 @@ def _summary_table(decisions) -> Table:
 def _finding_panel(decision) -> Panel:
     f = decision.finding
     style = _SEVERITY_STYLE.get(f.severity, "")
-    parts: list = [Text.from_markup(f"[bold]{f.rule_id}[/] ({f.severity})")]
+    parts: list = [Text.from_markup(f"[bold]{escape(f.rule_id)}[/] ({escape(f.severity)})")]
     if f.explanation:
         parts.append(Text(f.explanation))
     parts.append(Text(f"Decision: {decision.reason}", style="italic"))
@@ -128,7 +131,7 @@ def _finding_panel(decision) -> Panel:
                              theme="ansi_dark", line_numbers=True, start_line=f.line_no)]
     return Panel(Group(*parts), box=glyphs.box_for(console),
                  title=f"[{_ACTION_STYLE.get(decision.action, '')}]{decision.action.upper()}[/] "
-                       f"{_where(f)}",
+                       f"{escape(_where(f))}",
                  border_style=style.split()[-1] if style else "white")
 
 
@@ -144,14 +147,14 @@ def headless_report(decisions, cfg=None) -> None:
     console.print(_summary_table(decisions))
     for decision in decisions:
         console.print(_finding_panel(decision))
-        console.print(f"  [green]fix[/] {_fix_hint(decision, cfg)}")
+        console.print(f"  [green]fix[/] {escape(_fix_hint(decision, cfg))}")
 
 
 def _preview(decision, proposal) -> Panel:
     f = decision.finding
     if proposal.mode in ("unstage", "manual"):
         title = "Proposed fix" if proposal.mode == "unstage" else "Fix this by hand"
-        return Panel(proposal.note, title=title, border_style="green",
+        return Panel(Text(proposal.note), title=title, border_style="green",
                      box=glyphs.box_for(console))
     old = _masked(f.line_text, f)
     body = Text()
@@ -165,7 +168,7 @@ def _preview(decision, proposal) -> Panel:
 
 def _apply_unstage(finding, cfg, resolved_paths: set[str]) -> bool:
     for action in applier.unstage_and_ignore(finding.path):
-        console.print(f"  [green]{glyphs.for_console(console)['ok']}[/] {action}")
+        console.print(f"  [green]{glyphs.for_console(console)['ok']}[/] {escape(action)}")
     resolved_paths.add(finding.path)
     audit_log.append({"fingerprint": of_finding(finding), "path": finding.path,
                       "action": "remediated", "method": "unstage_ignore"})
@@ -178,7 +181,7 @@ def _apply_fix(finding, cfg, mode: str) -> bool:
         where = applier.apply(finding.path, finding.line_no, proposal.new_line or "",
                               finding.line_text)
     except applier.StaleIndexError as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(f"[red]{escape(str(exc))}[/red]")
         return False
     audit_log.append({"fingerprint": of_finding(finding), "path": finding.path,
                       "action": "remediated",
@@ -195,41 +198,53 @@ def _record_exception(finding, cfg) -> bool:
         console.print("[red]An exception needs a reason.[/red]")
         return False
     fingerprint = of_finding(finding)
-    audit_exceptions.add(fingerprint, reason, cfg.exceptions_ttl_days)
+    audit_exceptions.add(fingerprint, reason, cfg.exceptions_ttl_days,
+                         rule_id=finding.rule_id, path=finding.path)
     audit_log.append({"fingerprint": fingerprint, "path": finding.path,
                       "action": "exception", "reason": reason})
     console.print(f"[yellow]Exception recorded for {cfg.exceptions_ttl_days} days "
                   "(scoped to this exact line).[/yellow]")
-    console.print("[dim]It is local to you. `zerotrace exceptions --promote` moves it into "
-                  f"{audit_exceptions.SHARED_FILE} so a reviewer sees it in the PR.[/]")
+    console.print("[dim]It is local to you. `zerotrace exceptions -i` (or `--promote`) moves it "
+                  f"into {audit_exceptions.SHARED_FILE} so a reviewer sees it in the PR.[/]")
     return True
 
 
-def _offer_choices(decision, cfg) -> tuple[list[str], str]:
-    """Print the preview(s) for this finding and return the menu."""
+_UNSTAGE = menu.Option("u", "unstage the file and add it to .gitignore")
+_REFERENCE = menu.Option("v", "env/vault reference")
+_PLACEHOLDER = menu.Option("r", "safe placeholder")
+_EXCEPTION = menu.Option("e", "exception, with a written reason")
+_ABORT = menu.Option("a", "abort the commit")
+
+
+def _offer_choices(decision, cfg) -> list[menu.Option]:
+    """Print the preview(s) for this finding and return what the developer may choose.
+
+    The recommended fix comes first, because the menu opens with the first option highlighted.
+    """
     finding = decision.finding
     if finding.line_no == 0:
         console.print(_preview(decision, proposer.propose(decision, "unstage", cfg)))
-        return ["u", "e", "a"], "[U]nstage + gitignore  [E]xception  [A]bort"
+        return [_UNSTAGE, _EXCEPTION, _ABORT]
     reference = proposer.propose(decision, "reference", cfg)
     console.print(_preview(decision, reference))
     if reference.mode == "manual":
         # Nothing to rewrite automatically (e.g. a value assembled from parts).
-        return ["e", "a"], "[E]xception  [A]bort"
+        return [_EXCEPTION, _ABORT]
     placeholder = proposer.propose(decision, "placeholder", cfg)
-    console.print(f"  [dim]or [R]: {_masked(placeholder.new_line or '', finding).strip()}[/]")
-    return (["v", "r", "e", "a"],
-            "[V] env/vault reference  [R] safe placeholder  [E]xception  [A]bort")
+    safe = escape(_masked(placeholder.new_line or "", finding).strip())
+    console.print(f"  [dim]or R: {safe}[/]")
+    return [_REFERENCE, _PLACEHOLDER, _EXCEPTION, _ABORT]
 
 
 def _interactive_resolve(decision, cfg, resolved_paths: set[str]) -> bool:
     """Returns True if this finding is resolved (fixed or excepted), False if aborted."""
     finding = decision.finding
     console.print(_finding_panel(decision))
-    choices, label = _offer_choices(decision, cfg)
-    # case_sensitive=False: "V" and "v" are the same answer. Typing the capital letter
-    # shown in the menu should never be rejected.
-    choice = Prompt.ask(label, choices=choices, default="a", case_sensitive=False).lower()
+    options = _offer_choices(decision, cfg)
+    # Arrow keys and Enter, the letter in either case, or a click. Falls back to a typed
+    # prompt when the terminal cannot draw the menu.
+    choice = menu.choose("How should this finding be resolved?", options,
+                         default=options[0].key, console=console)
 
     if choice == "u":
         return _apply_unstage(finding, cfg, resolved_paths)
