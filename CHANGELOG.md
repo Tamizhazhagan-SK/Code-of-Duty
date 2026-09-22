@@ -4,6 +4,21 @@ All notable changes documented here, following [Keep a Changelog](https://keepac
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Releases tag and publish themselves (`.github/workflows/release.yml`). Start one with the
+  **Run workflow** button (pick patch, minor or major), by pushing a commit to main that raises
+  the version, or by pushing a `vX.Y.Z` tag by hand. Each run gates on the full test suite,
+  builds the three binaries, pushes an annotated tag and publishes the GitHub Release with the
+  version's CHANGELOG section as notes; a version that is already released is skipped.
+  `scripts/release.py` does the version bump (every declaration, the CHANGELOG section and its
+  compare link), the release decision, the notes and the tag message.
+### Changed
+- The logo and name appear only on the first `zerotrace install` on a machine (or the first
+  after an uninstall). Blocked commits, scans, pre-push reports and re-installs print just the
+  findings or the result.
+- Findings are listed in one order everywhere: what blocks before what only warns, and within
+  each the most severe first (critical, high, medium, low), then file and line. The summary
+  table, the panels under it, the full-screen reviewer and `scan --format json` all agree.
 
 ## [0.2.0] - 2026-09-22
 ### Added
