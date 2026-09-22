@@ -7,7 +7,14 @@
 set -euo pipefail
 
 # 1. Install the tool (signed single-file binary once published; falls back to pip --user).
-curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
+#    This runs as root on every managed Mac, so the download is strict: HTTPS only, including
+#    any redirect (--proto '=https'), TLS 1.2 or newer, and saved to a file first so a
+#    connection that drops half-way never runs a truncated script.
+INSTALLER_URL="https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh"
+INSTALLER="$(mktemp)"
+trap 'rm -f "$INSTALLER"' EXIT
+curl --proto '=https' --tlsv1.2 -fsSL "$INSTALLER_URL" -o "$INSTALLER"
+bash "$INSTALLER"
 
 # 2. Machine-wide git hook: every user's repos on this Mac are now protected.
 ZEROTRACE_BIN="$(command -v zerotrace || echo "$HOME/.local/bin/zerotrace")"

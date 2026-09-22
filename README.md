@@ -50,7 +50,7 @@ installers below work without a manual clone:
 
 ```bash
 # macOS / Linux - no pip/pipx/uv required, bootstraps Python itself if missing
-curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
 ```
 
 ```powershell
@@ -66,7 +66,7 @@ PATH entry and `~/.zerotrace`. Your repos, their history and their files are unt
 ```bash
 # macOS / Linux - from a clone, or piped
 ./install.sh --uninstall
-curl -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash -s -- --uninstall
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash -s -- --uninstall
 ```
 
 ```powershell
