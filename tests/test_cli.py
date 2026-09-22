@@ -163,3 +163,33 @@ def test_a_closed_stdin_at_the_prompt_is_an_abort_not_an_internal_error(repo, ca
     assert run("review", "--classic") == 1
     err = capsys.readouterr().err
     assert "Nothing was committed" in err and "internal error" not in err
+
+
+_BANNER = "secret & PII guardrail"      # the name panel printed with the logo
+
+
+def test_a_blocked_commit_shows_the_findings_without_the_logo(repo, capsys):
+    write("pay.py", f'KEY = "{Fake.stripe_live()}"\n')
+    git("add", "-A")
+    assert run("run") == 1
+    out = capsys.readouterr().out
+    assert "stripe-live-key" in out
+    assert _BANNER not in out and "ZEROTRACE" not in out, "no logo or name on an alert"
+
+
+def test_scan_reports_have_no_banner_either(repo, capsys):
+    write("pay.py", f'KEY = "{Fake.stripe_live()}"\n')
+    git("add", "-A")
+    assert run("scan", "--staged", "--no-model") == 1
+    assert _BANNER not in capsys.readouterr().out
+
+
+def test_the_logo_appears_on_the_first_install_only(git_env, repo, capsys):
+    assert run("install", "--global") == 0
+    assert _BANNER in capsys.readouterr().out, "first install: logo and name"
+    assert run("install", "--global") == 0
+    assert _BANNER not in capsys.readouterr().out, "re-install: just the result"
+    assert run("uninstall", "--global") == 0
+    capsys.readouterr()
+    assert run("install", "--global") == 0
+    assert _BANNER in capsys.readouterr().out, "after an uninstall it is a first install again"

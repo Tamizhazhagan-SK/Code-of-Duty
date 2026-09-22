@@ -164,15 +164,13 @@ def _scan_targets(args, cfg) -> list[tuple[str, list]]:
 
 
 def _render_scan(results: list[tuple[str, list]], cfg) -> None:
-    from .ui.terminal import banner, headless_report
+    from .ui.terminal import headless_report
     shown = False
     for sha, decisions in results:
         relevant = [d for d in decisions if d.action != "allow"]
         if not relevant:
             continue
-        if not shown:
-            banner()
-            shown = True
+        shown = True
         if sha:
             print(f"\ncommit {sha[:12]}")
         headless_report(relevant, cfg)
@@ -220,8 +218,7 @@ def _commits_being_pushed(stdin_text: str, remote: str) -> list[str]:
 
 
 def _report_blocked_push(blocked: list[tuple[str, list]], cfg) -> None:
-    from .ui.terminal import banner, headless_report
-    banner()
+    from .ui.terminal import headless_report
     for sha, hits in blocked:
         subject = gitutil.git("log", "-1", "--format=%s", sha).strip()
         print(f"\ncommit {sha[:12]}  {subject}")
@@ -300,15 +297,24 @@ def init(args) -> int:
     return 0
 
 
+def _first_install(scope: str) -> bool:
+    """True when ZeroTrace does not already own this scope's hooks path."""
+    from . import installer
+    return not installer.is_managed(gitutil.config_get(installer.HOOKS_PATH_KEY, scope))
+
+
 def install_cmd(args) -> int:
     from . import installer
     from .ui.progress import Bar
     from .ui.terminal import banner
-    banner()
+    scope = "system" if args.system else "global"
+    # The logo and name mark the moment ZeroTrace arrives on a machine, and nothing else:
+    # a re-install, a blocked commit, a scan or a push prints only what happened.
+    if _first_install(scope):
+        banner()
     bar = Bar(len(installer.INSTALL_STEPS))
     try:
-        lines = installer.install("system" if args.system else "global", args.hooks_dir,
-                                  on_step=bar.step)
+        lines = installer.install(scope, args.hooks_dir, on_step=bar.step)
     except (PermissionError, gitutil.GitError) as exc:
         bar.clear()
         print(f"zerotrace: install failed: {exc}", file=sys.stderr)
