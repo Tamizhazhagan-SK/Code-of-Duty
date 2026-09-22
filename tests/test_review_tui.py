@@ -7,6 +7,11 @@ import subprocess
 
 import pytest
 
+# `textual` is an optional extra (`pip install "zerotrace[tui]"`). A machine that only wants
+# the guardrail should not fail the suite for missing it; CI installs `.[dev]`, which has it.
+pytest.importorskip("textual", reason="install the tui extra to test the full-screen reviewer")
+pytest.importorskip("pytest_asyncio", reason="pytest-asyncio drives the Textual Pilot")
+
 from zerotrace import pipeline
 from zerotrace.audit import exceptions as audit_exceptions
 from zerotrace.collectors.staged_diff import collect_staged

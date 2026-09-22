@@ -36,9 +36,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   what is already resolved, `?` opens the key list, and the cursor moves to the next open
   finding after each fix. Under 80 columns the panes stack. Falls back to the inline flow
   when there is no terminal, when `TERM=dumb`, or when `textual` is not installed;
-  `--classic` forces it. Install with `pip install "zerotrace[tui]"` (`textual>=0.80`).
+  `--classic` forces it. Install with `pip install "zerotrace[tui]"` (`textual>=8.0`).
 
 ### Changed
+- The `tui` extra requires `textual>=8.0` (the version the suite runs against), and the `dev`
+  extra now includes it and `pytest-asyncio`; CI checks that both import before testing.
+- The PyInstaller binary leaves `textual` out explicitly, so the binary's `review` keeps the
+  inline flow instead of bundling a half-working full-screen app.
 - Default `model.timeout_seconds` raised from 20 s to 120 s: measured CPU-only inference is
   ~106 s p50, so the old default failed every tie-break closed to WARN in repos without a config.
 - README and `docs/ARCHITECTURE.md` describe both enforcement points (commit time and AI
@@ -60,6 +64,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Leaving the full-screen reviewer with `ctrl+q` reported a clean review: Textual's own
   binding exits with no value, which read as success. It now means what `A` and `Q` mean —
   anything still open keeps the commit blocked.
+- CI failed to collect `tests/test_review_tui.py` (`No module named 'textual'`): the `dev`
+  extra did not install the `tui` extra. The full-screen tests also skip cleanly on a
+  guardrail-only install instead of erroring.
 
 ## [0.1.0] - 2026-09-17
 First public release.

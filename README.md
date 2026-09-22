@@ -152,7 +152,7 @@ only when the line matches, so unrelated unstaged edits are never swept into the
 ## Full-screen review
 
 `zerotrace review` opens a full-screen Textual app when a terminal is available and the `tui`
-extra is installed (`pip install "zerotrace[tui]"`, `textual>=0.80`): a findings table on the
+extra is installed (`pip install "zerotrace[tui]"`, `textual>=8.0`): a findings table on the
 left, a detail pane on the right showing the proposed fix as a red/green diff, and a docked
 status line tracking how many findings are still open. Recording an `[E]` exception opens a
 modal that requires a written reason before it is saved.
