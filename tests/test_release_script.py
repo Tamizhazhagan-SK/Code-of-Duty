@@ -157,6 +157,76 @@ def test_tag_message_takes_the_summary_from_the_prepare_commit(project):
     assert release.tag_message("v1.2.3", _git(root, "rev-parse", "HEAD"), root) == "v1.2.3"
 
 
+def _tag(root: Path, name: str) -> None:
+    _git(root, "-c", "user.email=t@example.test", "-c", "user.name=T", "tag", "-a", name,
+         "-m", name)
+
+
+def test_a_version_lower_than_one_already_released_is_refused(project):
+    """Someone edits pyproject.toml by hand, or a bad merge brings an old version back. That
+    version has no tag, so the old rule ("untagged means release it") would publish it and
+    overwrite the meaning of a number people already have."""
+    root = _repo(project)
+    _tag(root, "v9.9.9")
+    with pytest.raises(release.ReleaseError, match="not higher than the released v9.9.9"):
+        release.plan({}, root=root)
+
+
+def test_a_tag_on_a_side_branch_is_refused(project):
+    """Releases are cut from main, so what ships is what was reviewed there."""
+    root = _repo(project)
+    _git(root, "branch", "-M", "main")
+    _git(root, "checkout", "-q", "-b", "side")
+    (root / "extra.txt").write_text("not on main\n", encoding="utf-8")
+    _git(root, "-c", "user.email=t@example.test", "-c", "user.name=T", "add", "-A")
+    _git(root, "-c", "user.email=t@example.test", "-c", "user.name=T", "commit", "-qm", "side")
+    version = release.current_version(root)
+    env = {"GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": f"v{version}"}
+    with pytest.raises(release.ReleaseError, match="not on main"):
+        release.plan(env, root=root)
+
+
+def test_a_tag_on_main_is_accepted(project):
+    root = _repo(project)
+    _git(root, "branch", "-M", "main")
+    version = release.current_version(root)
+    env = {"GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": f"v{version}"}
+    assert release.plan(env, root=root)["release"] == "true"
+
+
+def test_pending_says_when_a_prepared_version_has_no_tag_yet(project):
+    """What makes re-running the whole release workflow safe: the bump job asks this first and
+    releases the prepared version instead of burning another number."""
+    root = _repo(project)
+    version = release.current_version(root)
+    assert release.pending(root)["pending"] == "true"
+    _tag(root, f"v{version}")
+    assert release.pending(root)["pending"] == "false"
+
+
+def test_stamp_writes_the_version_into_installer_copies(tmp_path):
+    out = tmp_path / "out"
+    written = release.stamp("v1.2.3", out)
+    assert {path.name for path in written} == {"install.sh", "install.ps1"}
+    assert 'RELEASE_VERSION="v1.2.3"' in (out / "install.sh").read_text(encoding="utf-8")
+    assert '$ReleaseVersion = "v1.2.3"' in (out / "install.ps1").read_text(encoding="utf-8")
+    # The originals are placeholders still: a clone installs from itself, not from a release.
+    assert 'RELEASE_VERSION=""' in (ROOT / "install.sh").read_text(encoding="utf-8")
+
+
+def test_a_stamped_installer_is_still_executable(tmp_path):
+    """It is downloaded and run; losing the bit turns `./install.sh` into "permission denied"."""
+    import os
+    written = release.stamp("v1.2.3", tmp_path / "out")
+    shell = [path for path in written if path.name == "install.sh"][0]
+    assert os.access(shell, os.X_OK)
+
+
+def test_stamping_refuses_a_version_that_is_not_a_tag(tmp_path):
+    with pytest.raises(release.ReleaseError):
+        release.stamp("latest", tmp_path / "out")
+
+
 @pytest.mark.parametrize("bad_sha", [
     "HEAD; rm -rf /",            # a shell metacharacter, in case a caller ever uses a shell
     "--upload-pack=touch /tmp/x",  # an option, not a revision

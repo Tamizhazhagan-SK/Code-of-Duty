@@ -2,8 +2,10 @@
 
     python scripts/release.py bump minor           # 0.2.0 -> 0.3.0 everywhere, CHANGELOG cut
     python scripts/release.py bump 1.0.0           # an exact version
+    python scripts/release.py pending              # is a prepared version still unreleased?
     python scripts/release.py plan                 # in CI: is there a version to release?
     python scripts/release.py notes v0.3.0         # that version's CHANGELOG section
+    python scripts/release.py stamp v0.3.0 out/    # installer copies that install v0.3.0
     python scripts/release.py tag-message v0.3.0 <sha>
 
 `bump` writes the new version into pyproject.toml, src/zerotrace/__init__.py,
@@ -156,10 +158,75 @@ def checked_sha(sha: str) -> str:
     return match.group(0)
 
 
+# The installers cannot import anything from the package - they run before Python exists - so
+# the release version is written into the copies that are attached to the release. That is what
+# makes `releases/latest/download/install.sh` install the release it came from instead of
+# whatever is newest by the time someone runs it.
+_STAMPS = (
+    ("install.sh", re.compile(r'^RELEASE_VERSION=""$', re.MULTILINE), 'RELEASE_VERSION="{}"'),
+    ("install.ps1", re.compile(r'^\$ReleaseVersion = ""$', re.MULTILINE),
+     '$ReleaseVersion = "{}"'),
+)
+
+
+def stamp(tag: str, out: Path, root: Path = ROOT) -> list[Path]:
+    """Write `tag` into copies of the installers in `out`. Returns what it wrote."""
+    tag = checked_tag(tag)
+    out.mkdir(parents=True, exist_ok=True)
+    written = []
+    for name, pattern, replacement in _STAMPS:
+        text = (root / name).read_text(encoding="utf-8")
+        stamped, count = pattern.subn(replacement.format(tag), text, count=1)
+        if count != 1:
+            raise ReleaseError(f"no version placeholder in {name}; scripts/release.py and the "
+                               "installer disagree about where the release version goes")
+        target = out / name
+        target.write_text(stamped, encoding="utf-8")
+        # The shell installer is downloaded and run; it keeps the bit it is committed with.
+        if name.endswith(".sh"):
+            target.chmod(0o755)
+        written.append(target)
+    return written
+
+
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
     """Run git with an argument LIST (never a shell string). Callers pass literals, or values
     that went through checked_tag / checked_sha first."""
     return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+
+
+def released_versions(root: Path = ROOT) -> list[tuple[int, int, int]]:
+    """Every vX.Y.Z tag this checkout can see, as comparable tuples."""
+    out = _git(root, "tag", "--list", "v[0-9]*.[0-9]*.[0-9]*").stdout.split()
+    found = []
+    for name in out:
+        match = _TAG_RE.fullmatch(name)
+        if match:
+            found.append(_parts(match.group(0).removeprefix("v")))
+    return sorted(found)
+
+
+def _on_main(root: Path, sha: str) -> bool:
+    """Is this commit on main? A tag pushed from a side branch would otherwise publish code
+    that main has never had. Unknowable in a clone with no main - which is not a reason to
+    refuse, so the answer there is yes."""
+    for ref in ("origin/main", "main"):
+        if _git(root, "rev-parse", "--verify", "-q", ref).returncode == 0:
+            return _git(root, "merge-base", "--is-ancestor", sha, ref).returncode == 0
+    return True
+
+
+def pending(root: Path = ROOT) -> dict[str, str]:
+    """Is there a version on main that has been prepared but never released?
+
+    The "Run workflow" button bumps the version and pushes it, then tags and publishes. If a
+    later step fails and the whole workflow is re-run, bumping again would skip the version
+    that is sitting on main unreleased and burn a number. So the bump job asks this first.
+    """
+    version = current_version(root)
+    tag = checked_tag(f"v{version}")
+    waiting = _git(root, "rev-parse", "-q", "--verify", f"refs/tags/{tag}").returncode != 0
+    return {"pending": "true" if waiting else "false", "version": version, "tag": tag}
 
 
 def plan(env: dict | os._Environ = os.environ, root: Path = ROOT) -> dict[str, str]:
@@ -171,16 +238,31 @@ def plan(env: dict | os._Environ = os.environ, root: Path = ROOT) -> dict[str, s
     """
     version = current_version(root)
     tag = checked_tag(f"v{version}")     # pyproject.toml is a file, and files can be edited
+    sha = _git(root, "rev-parse", "HEAD").stdout.strip()
     if env.get("GITHUB_REF_TYPE") == "tag":
         if env.get("GITHUB_REF_NAME") != tag:
             raise ReleaseError(f"tag {env.get('GITHUB_REF_NAME')} does not match "
                                f"pyproject.toml version {version}")
+        if sha and not _on_main(root, sha):
+            raise ReleaseError(f"{tag} points at a commit that is not on main; releases are "
+                               "cut from main so that what ships is what was reviewed")
         release = True
     else:
         release = _git(root, "rev-parse", "-q", "--verify", f"refs/tags/{tag}").returncode != 0
     if release:
+        # A version that is not higher than one already released is an edited file, not a
+        # release: publishing it would overwrite the meaning of a version people already have.
+        highest = max(released_versions(root), default=None)
+        if highest is not None and _parts(version) <= highest and not _tag_exists(root, tag):
+            released = "v{}.{}.{}".format(*highest)
+            raise ReleaseError(f"version {version} is not higher than the released {released}; "
+                               "raise it in pyproject.toml (python scripts/release.py bump …)")
         notes(tag, root)            # fail now, not after building three binaries
     return {"release": "true" if release else "false", "version": version, "tag": tag}
+
+
+def _tag_exists(root: Path, tag: str) -> bool:
+    return _git(root, "rev-parse", "-q", "--verify", f"refs/tags/{tag}").returncode == 0
 
 
 def tag_message(tag: str, sha: str, root: Path = ROOT) -> str:
@@ -202,6 +284,10 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser("bump", help="raise the version everywhere and cut the changelog")
     b.add_argument("how", help="patch, minor, major, or an exact X.Y.Z")
     sub.add_parser("plan", help="print release=/version=/tag= lines for $GITHUB_OUTPUT")
+    sub.add_parser("pending", help="is the version on main prepared but not yet released?")
+    s = sub.add_parser("stamp", help="write the release version into installer copies")
+    s.add_argument("tag")
+    s.add_argument("out", help="directory to write install.sh / install.ps1 into")
     n = sub.add_parser("notes", help="print a version's CHANGELOG section")
     n.add_argument("tag")
     t = sub.add_parser("tag-message", help="print the annotated tag message")
@@ -217,6 +303,15 @@ def main(argv: list[str] | None = None) -> int:
             if decision["release"] == "false":
                 print(f"release: {decision['tag']} is already tagged; nothing to release",
                       file=sys.stderr)
+        elif args.command == "pending":
+            state = pending()
+            print("\n".join(f"{key}={value}" for key, value in state.items()))
+            if state["pending"] == "true":
+                print(f"release: {state['tag']} is prepared on main but has no tag yet",
+                      file=sys.stderr)
+        elif args.command == "stamp":
+            for path in stamp(args.tag, Path(args.out)):
+                print(path)
         elif args.command == "notes":
             sys.stdout.write(notes(args.tag))
         else:
