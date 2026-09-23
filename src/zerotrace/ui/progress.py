@@ -8,8 +8,8 @@ spinner's "something is happening":
 
   * the bar goes LAST and every log line is written by erasing it, printing, and drawing it
     again; a bar printed above its own log is pushed off the screen by the next line,
-  * a gradient runs left to right across the fill, one escape per colour stop rather than one
-    per cell,
+  * the accent gradient (`ui/theme.py`) runs left to right across the fill, one escape per
+    colour stop rather than one per cell,
   * the label sits in a FIXED field, because a field that sizes to its contents makes the bar
     itself twitch while the percentage stands still, which reads as the percentage being wrong,
   * under 60 columns the label is dropped rather than squeezed,
@@ -22,13 +22,7 @@ from typing import IO
 
 from rich.console import Console
 
-from . import capability
-
-# Cyan to white, twelve stops, the same left-to-right walk the yeet bar uses.
-_RAMP_RGB = ((34, 166, 179), (44, 178, 188), (56, 190, 197), (70, 201, 205), (86, 211, 213),
-             (104, 220, 220), (124, 228, 227), (146, 235, 234), (170, 241, 240),
-             (196, 246, 245), (223, 250, 250), (245, 253, 253))
-_RAMP_256 = (37, 38, 44, 44, 45, 51, 51, 87, 123, 159, 195, 231)
+from . import capability, theme
 
 _CHROME = 11          # "  [" + "] " + "100%" + a column of slack so a full bar never wraps
 _LABEL_WIDTH = 28
@@ -74,10 +68,8 @@ class Bar:
     # --- drawing ------------------------------------------------------------------------
     def _ramp(self) -> list[str]:
         if not self.colour:
-            return [""] * len(_RAMP_RGB)
-        if self.console.color_system == "truecolor":
-            return [f"\033[38;2;{r};{g};{b}m" for r, g, b in _RAMP_RGB]
-        return [f"\033[38;5;{index}m" for index in _RAMP_256]
+            return [""] * len(theme.RAMP_RGB)
+        return theme.escapes(self.console)
 
     def _fill(self, width: int, filled: int) -> str:
         """The gradient, one escape per colour stop rather than one per cell."""

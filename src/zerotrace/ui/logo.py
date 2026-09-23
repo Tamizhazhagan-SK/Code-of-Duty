@@ -22,16 +22,19 @@ from importlib import resources
 
 from rich.console import Console
 
-from . import capability
+from . import capability, theme
 
 _PACKAGE = "zerotrace.ui.assets"
 _ENV_VAR = "ZEROTRACE_LOGO"
 _CHUNK = 4096            # bytes of base64 per Kitty graphics-protocol chunk
 _GUTTER = "   "
-_WHITE, _RESET = "\033[1;97m", "\033[0m"
+_RESET = "\033[0m"
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
-_MARK, _PAGE = (16, 16, 16), (245, 245, 245)
+# The card: the mark in the accent on a light page. Painting the silhouette itself is what
+# keeps the cut-outs (eyes, beard, horn) light, so the face stays readable - a mark painted
+# as light-on-accent turns those cut-outs into holes in a blob.
+_MARK, _PAGE = theme.ACCENT_RGB, (245, 245, 245)
 _WORDMARK = "ZEROTRACE"
 _TAGLINE = ("secret & PII guardrail", "commits · AI agents · local-first",
             "no trace. no leaks. stays safe.")
@@ -143,7 +146,7 @@ def _card_lines(mark: list[str], console: Console) -> list[str]:
         paint = (f"\033[38;2;{_MARK[0]};{_MARK[1]};{_MARK[2]};"
                  f"48;2;{_PAGE[0]};{_PAGE[1]};{_PAGE[2]}m")
     else:
-        paint = "\033[38;5;232;48;5;255m"
+        paint = f"\033[38;5;{theme.ACCENT_256};48;5;255m"
     return [f"{paint}{line}{_RESET}" for line in _centred(mark)]
 
 
@@ -197,11 +200,26 @@ def _compose(mark: list[str], right: list[str]) -> list[str]:
 
 
 def _paint(lines: list[str], console: Console) -> str:
+    """Anything not already carrying its own colour (the card does) is drawn in the accent."""
     body = "\n".join(lines)
     if console.color_system is None or not capability.decorations_allowed():
         return body + "\n"
-    painted = [line if "\033[" in line else f"{_WHITE}{line}{_RESET}" for line in lines]
+    accent = theme.accent_escape(console)
+    painted = [line if "\033[" in line else f"{accent}{line}{_RESET}" for line in lines]
     return "\n".join(painted) + "\n"
+
+
+def _accented(lines: list[str], console: Console) -> list[str]:
+    """Paint lines the accent here rather than leaving them to `_paint`.
+
+    `_compose` joins the mark and the wordmark into one string, and the card tier's mark
+    already carries its own escapes - so the joined line looks "already coloured" to `_paint`
+    and the name beside the card came out in the terminal's default white.
+    """
+    accent = theme.accent_escape(console)
+    if not accent:
+        return lines
+    return [f"{accent}{line}{_RESET}" if line else line for line in lines]
 
 
 def _composition(console: Console, unicode_tier: bool, card: bool = False) -> list[str]:
@@ -222,17 +240,21 @@ def _composition(console: Console, unicode_tier: bool, card: bool = False) -> li
     block_width = max(len(line) for line in block)
 
     ascii_only = not unicode_tier and not card
+    # Only the card carries its own colour; everything else is painted once by `_paint`.
+    def right(lines: list[str]) -> list[str]:
+        return _accented(lines, console) if card else lines
+
     if big and width >= big_width + len(_GUTTER) + wide_width:
-        return _compose(big, wide + ["", _TAGLINE[-1]])
+        return _compose(big, right(wide + ["", _TAGLINE[-1]]))
     if big and (unicode_tier or card) and width >= big_width + len(_GUTTER) + block_width:
-        return _compose(big, block + ["", _TAGLINE[-1]])
+        return _compose(big, right(block + ["", _TAGLINE[-1]]))
     if big and width >= big_width + len(_GUTTER) + 24:
-        return _compose(big, _text_lines(width - big_width - len(_GUTTER), ascii_only))
+        return _compose(big, right(_text_lines(width - big_width - len(_GUTTER), ascii_only)))
     if small and width >= small_width + len(_GUTTER) + 24:
-        return _compose(small, _text_lines(width - small_width - len(_GUTTER), ascii_only))
+        return _compose(small, right(_text_lines(width - small_width - len(_GUTTER), ascii_only)))
     if small and width >= small_width:
-        return small + ["", *_text_lines(width, ascii_only)]
-    return _text_lines(width, ascii_only)
+        return small + ["", *right(_text_lines(width, ascii_only))]
+    return right(_text_lines(width, ascii_only))
 
 
 def render(console: Console) -> str | None:

@@ -13,7 +13,7 @@ from ..audit import exceptions as audit_exceptions
 from ..audit import log as audit_log
 from ..audit.fingerprint import of_finding
 from ..classifier.redact import language_of, redact
-from . import glyphs, menu
+from . import glyphs, menu, theme
 from ..policy.engine import Decision, by_priority
 from ..remediation import applier, proposer
 from . import logo as logo_render
@@ -263,8 +263,9 @@ def banner() -> None:
         sys.stdout.write(art if art.endswith("\n") else art + "\n")
         sys.stdout.flush()
     console.print(Panel.fit(
-        glyphs.sanitize("[bold cyan]ZeroTrace[/] · secret & PII guardrail · local-first", console),
-        border_style="cyan", box=glyphs.box_for(console),
+        glyphs.sanitize(f"[{theme.ACCENT_BOLD}]ZeroTrace[/] · secret & PII guardrail · "
+                        "local-first", console),
+        border_style=theme.ACCENT_STYLE, box=glyphs.box_for(console),
     ))
 
 

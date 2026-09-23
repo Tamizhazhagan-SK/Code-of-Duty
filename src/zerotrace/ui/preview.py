@@ -15,7 +15,7 @@ from rich.table import Table
 from ..config import Config
 from ..detectors import Finding
 from ..policy.engine import Decision
-from . import capability, logo, terminal
+from . import capability, logo, terminal, theme
 from .progress import Bar
 
 _TIERS = ("auto", "png", "card", "unicode", "ascii", "text")
@@ -110,7 +110,8 @@ def run(tier: str = "auto") -> int:
         bar.finish()
 
         _section(console, "6. panels and status glyphs")
-        console.print(Panel.fit("[bold cyan]ZeroTrace[/] · preview panel", border_style="cyan"))
+        console.print(Panel.fit(f"[{theme.ACCENT_BOLD}]ZeroTrace[/] · preview panel",
+                                border_style=theme.ACCENT_STYLE))
         console.print("[green]✓[/] ok   [yellow]![/] warn   [red]✗[/] fail   "
                       "— if those show as ?, this console lacks UTF-8")
         console.print("[dim]Run `zerotrace ui --tier ascii` to see the legacy-console rendering.[/]")
