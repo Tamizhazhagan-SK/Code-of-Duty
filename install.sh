@@ -389,11 +389,22 @@ legacy_uninstall() {
       found=1
       say "  ${G}${TICK}${N} unset the global core.hooksPath" ;;
   esac
+  # Only a package in the USER SITE, which is where v0.2 and earlier installed it. Anything
+  # else - a virtualenv, an editable checkout a developer is working in, a distribution
+  # package - was put there by somebody else, and an uninstaller that removes other people's
+  # installs is worse than one that leaves something behind.
   python=$(find_python || true)
-  if [ -n "$python" ] && "$python" -m pip show zerotrace >/dev/null 2>&1; then
-    "$python" -m pip uninstall --yes --quiet zerotrace >/dev/null 2>&1 || true
-    found=1
-    say "  ${G}${TICK}${N} removed the zerotrace package from $python"
+  if [ -n "$python" ]; then
+    local location user_site
+    location=$("$python" -m pip show zerotrace 2>/dev/null | sed -n 's/^Location: //p')
+    user_site=$("$python" -m site --user-site 2>/dev/null || true)
+    if [ -n "$location" ] && [ -n "$user_site" ] && [ "$location" = "$user_site" ]; then
+      "$python" -m pip uninstall --yes --quiet zerotrace >/dev/null 2>&1 || true
+      found=1
+      say "  ${G}${TICK}${N} removed the zerotrace package from your user site"
+    elif [ -n "$location" ]; then
+      warn "a zerotrace is installed in $location; this installer did not put it there, so it is left alone"
+    fi
   fi
   if [ -d "$HOME_DIR" ]; then
     rm -rf "$HOME_DIR"

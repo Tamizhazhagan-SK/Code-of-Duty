@@ -303,8 +303,16 @@ function Invoke-Logged([string]$Label, [int]$Target, [scriptblock]$Body) {
     # Reset first: $LASTEXITCODE is global and survives, so a body that sets no exit code at
     # all would otherwise be judged by whatever ran before it.
     $global:LASTEXITCODE = 0
-    Invoke-Native { & $Body *>> $LogFile }
-    if ($LASTEXITCODE -ne 0) { return $false }
+    # Captured, then appended - NOT `*>> $LogFile`. A redirection holds the file open for as
+    # long as the command runs, and on Windows the next step then fails with "the process
+    # cannot access the file because it is being used by another process", which is how this
+    # installer died at step 2 on a clean machine.
+    $output = Invoke-Native { & $Body 2>&1 }
+    $code = $LASTEXITCODE
+    if ($output) {
+        try { ($output | Out-String) | Add-Content -Path $LogFile -Encoding UTF8 } catch { }
+    }
+    if ($code -ne 0) { return $false }
     $script:Pct = $Target
     Write-Bar
     return $true

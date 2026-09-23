@@ -44,7 +44,9 @@ def test_a_second_install_replaces_the_first_without_stacking_path_lines(machine
 
 def test_uninstall_removes_what_it_installed_and_nothing_else(machine):
     machine.install("--local", "--no-model")
-    mine = machine.home / ".zshrc"
+    # ~/.profile, not ~/.zshrc: the installer writes a zsh line only where zsh exists, and the
+    # Linux runner has none - a test must not depend on which shells a machine happens to have.
+    mine = machine.home / ".profile"
     mine.write_text(mine.read_text(encoding="utf-8") +
                     '\n# added by some other tool\nexport PATH="/opt/other:$PATH"\n',
                     encoding="utf-8")
