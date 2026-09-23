@@ -41,7 +41,17 @@ def test_install_sh_has_no_crlf():
 
 
 def test_install_sh_is_valid_bash():
-    assert subprocess.run(["bash", "-n", str(SH)], capture_output=True).returncode == 0
+    """Parsed by a real bash, wherever one exists.
+
+    On the Windows runner `bash` is the WSL launcher stub, which exits 1 without running
+    anything when no distribution is installed - a failure about the machine, not about the
+    script. So the shell is proven to work before it is trusted to judge; the Linux and macOS
+    jobs are where this check really runs.
+    """
+    if subprocess.run(["bash", "-c", "exit 0"], capture_output=True).returncode != 0:
+        pytest.skip("no working bash on this machine (the Windows runner's is a WSL stub)")
+    done = subprocess.run(["bash", "-n", str(SH)], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
 
 
 def test_the_powershell_installer_is_ascii():

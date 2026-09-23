@@ -41,7 +41,12 @@ def machine(tmp_path, monkeypatch):
     """A fresh machine: its own HOME, its own global git config, nothing of ours in it."""
     home = tmp_path / "machine"
     (home / "bin").mkdir(parents=True)
+    # The real environment, with only what must be isolated replaced. Building one from a
+    # handful of keys instead looked tidier and was wrong: on Windows it left out PATHEXT, so
+    # `Get-Command git` found nothing and the installer correctly refused to run - a whole
+    # platform's tests failing over an environment variable the test forgot to pass on.
     env = {
+        **os.environ,
         "HOME": str(home),
         "USERPROFILE": str(home),
         "GIT_CONFIG_GLOBAL": str(home / "gitconfig"),
@@ -53,24 +58,33 @@ def machine(tmp_path, monkeypatch):
         # console is a column narrower than Linux's - an assertion on a sentence would then
         # pass on one OS and fail on another for no reason anyone can see.
         "COLUMNS": "200",
-        "PATH": os.environ.get("PATH", ""),
         # Nothing listens there, so an install never waits on a model it was not asked for.
         "ZEROTRACE_MODEL_ENDPOINT": "http://127.0.0.1:9",
         # A container that never answers is a real case; waiting the real three minutes for it
         # in a test is not.
         "ZEROTRACE_MODEL_WAIT_SECONDS": "3",
     }
-    for key in ("PIP_FIND_LINKS", "PIP_NO_INDEX", "PIP_INDEX_URL", "SYSTEMROOT", "TMPDIR",
-                "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "COMSPEC"):
-        if os.environ.get(key):
-            env[key] = os.environ[key]
+    # Whatever the developer running this has set for themselves must not decide the outcome.
+    for leak in ("ZEROTRACE_POLICY", "ZEROTRACE_EXTRAS", "ZEROTRACE_REF", "ZEROTRACE_ASCII",
+                 "ZEROTRACE_NO_MODIFY_PATH", "ZEROTRACE_LOGO", "NO_COLOR", "VIRTUAL_ENV"):
+        env.pop(leak, None)
     return Machine(home, env)
 
 
+# Box-drawing characters, and the ASCII fallbacks a legacy console gets.
+_BORDERS = str.maketrans({character: " " for character in "│┃║|╭╮╰╯┌┐└┘├┤┬┴┼─━═+"})
+
+
 def flat(text: str) -> str:
-    """Text with every run of whitespace collapsed: assertions are about what was said, not
-    about where a table happened to wrap it."""
-    return " ".join(text.split())
+    """Text with table borders and every run of whitespace removed.
+
+    A sentence printed inside a table is wrapped to the console width and each line is fenced
+    by borders, so "a staged credential was refused by the pre-commit hook" arrives as two
+    lines with a `│` between them. Assertions are about what was said, not about where the
+    renderer happened to break it - and the width differs per OS, which is how this first
+    showed up as a Linux-only failure.
+    """
+    return " ".join(text.translate(_BORDERS).split())
 
 
 class Machine:
