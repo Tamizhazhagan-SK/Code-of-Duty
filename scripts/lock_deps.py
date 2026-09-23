@@ -31,6 +31,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # lock file -> (extras of the project, extra input files)
 LOCKS = {
     "runtime.txt": ([], ["build.in"]),
+    # What install.sh / install.ps1 put in a user's environment: the guardrail, the
+    # full-screen apps, and the build backend (a clone install builds the wheel itself).
+    "install.txt": (["tui"], ["build.in"]),
     "dev.txt": (["dev"], ["build.in"]),
     "release.txt": (["dev"], ["build.in", "pyinstaller.in"]),
 }

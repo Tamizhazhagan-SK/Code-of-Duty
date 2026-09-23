@@ -16,7 +16,7 @@ from zerotrace.config import load_config
 def sandbox(git_env, tmp_path, monkeypatch):
     # A container that never answers is a real case (a wedged daemon), and waiting the real
     # three minutes for it in a unit test is not.
-    monkeypatch.setattr(modelhost, "_HEALTH_TIMEOUT", 2.0)
+    monkeypatch.setenv(modelhost._WAIT_ENV, "2")
     monkeypatch.chdir(tmp_path)
     return tmp_path
 

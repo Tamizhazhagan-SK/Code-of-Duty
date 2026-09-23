@@ -1,4 +1,7 @@
-"""Real git repos: diff collection, index-safe remediation, unstage + gitignore, pre-push."""
+"""Real git repos: diff collection, index-safe remediation, unstage + gitignore, pre-push.
+
+End to end through git itself - every assertion is about what ends up in the index or in the
+commit, not about what a function returned."""
 import os
 import subprocess
 import sys
@@ -8,7 +11,7 @@ from zerotrace.collectors.staged_diff import collect_commit, collect_staged
 from zerotrace.config import load_config
 from zerotrace.remediation import applier
 
-from .conftest import git, write
+from ..conftest import git, write
 
 
 def test_collect_staged_only_added_lines(repo):
