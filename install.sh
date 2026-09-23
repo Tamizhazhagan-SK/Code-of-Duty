@@ -396,7 +396,10 @@ legacy_uninstall() {
   python=$(find_python || true)
   if [ -n "$python" ]; then
     local location user_site
-    location=$("$python" -m pip show zerotrace 2>/dev/null | sed -n 's/^Location: //p')
+    # `|| true` matters: `set -o pipefail` is on, `pip show` exits 1 when the package is not
+    # installed, and an assignment whose command substitution fails ends the script - which is
+    # exactly how `--uninstall` died after printing nothing but the banner.
+    location=$("$python" -m pip show zerotrace 2>/dev/null | sed -n 's/^Location: //p' || true)
     user_site=$("$python" -m site --user-site 2>/dev/null || true)
     if [ -n "$location" ] && [ -n "$user_site" ] && [ "$location" = "$user_site" ]; then
       "$python" -m pip uninstall --yes --quiet zerotrace >/dev/null 2>&1 || true
@@ -610,7 +613,7 @@ else
   BASE="$REPO_URL/releases/download/$TAG"
   download "$BASE/SHA256SUMS" "$ASSET_DIR/SHA256SUMS" \
     || die "could not download $TAG. Check the version, or install from a clone."
-  WHEEL_NAME=$(awk '$2 ~ /\.whl$/ {print $2}' "$ASSET_DIR/SHA256SUMS" | sed 's/^\*//' | head -1)
+  WHEEL_NAME=$(awk '$2 ~ /\.whl$/ {print $2}' "$ASSET_DIR/SHA256SUMS" | sed 's/^\*//' | head -1 || true)
   [ -n "$WHEEL_NAME" ] || die "release $TAG has no wheel listed in SHA256SUMS."
   spin "downloading $WHEEL_NAME" 25 download "$BASE/$WHEEL_NAME" "$ASSET_DIR/$WHEEL_NAME" \
     || { show_log; die "could not download $WHEEL_NAME from $TAG"; }
@@ -695,7 +698,7 @@ case "$EXTRAS" in
 esac
 
 rm -rf "$VENV_DIR.old"
-VERSION=$("$VENV_PY" -m zerotrace version 2>/dev/null | awk '{print $2}')
+VERSION=$("$VENV_PY" -m zerotrace version 2>/dev/null | awk '{print $2}' || true)
 ok "zerotrace ${VERSION:-installed} in $VENV_DIR"
 
 # ── the launcher, and the uninstaller that knows these paths ─────────────────────────────

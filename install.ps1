@@ -280,15 +280,19 @@ function Stop-Install([string]$Text) {
     exit 1
 }
 
-function Invoke-Native([scriptblock]$Body) {
+function Invoke-Native([scriptblock]$ZeroTraceCommand) {
     # A scriptblock is bound to the scope it was written in, so the preference has to be set
     # where the name lookup will land - script AND global, because under `irm | iex` the
     # script's top level IS the global scope.
+    #
+    # The parameter's name is deliberately one nobody else would use: a scriptblock resolves
+    # its variables in the scope that RUNS it, so a caller passing `{ & $Body }` found this
+    # parameter - itself - and recursed until PowerShell reported a call depth overflow.
     $prevScript = $script:ErrorActionPreference
     $prevGlobal = $global:ErrorActionPreference
     $script:ErrorActionPreference = "Continue"
     $global:ErrorActionPreference = "Continue"
-    try { & $Body } finally {
+    try { & $ZeroTraceCommand } finally {
         $script:ErrorActionPreference = $prevScript
         $global:ErrorActionPreference = $prevGlobal
     }
@@ -303,11 +307,23 @@ function Invoke-Logged([string]$Label, [int]$Target, [scriptblock]$Body) {
     # Reset first: $LASTEXITCODE is global and survives, so a body that sets no exit code at
     # all would otherwise be judged by whatever ran before it.
     $global:LASTEXITCODE = 0
-    # Captured, then appended - NOT `*>> $LogFile`. A redirection holds the file open for as
-    # long as the command runs, and on Windows the next step then fails with "the process
-    # cannot access the file because it is being used by another process", which is how this
-    # installer died at step 2 on a clean machine.
-    $output = Invoke-Native { & $Body 2>&1 }
+    # The preferences are set HERE rather than by calling Invoke-Native with `{ & $Body }`.
+    # That looked like reuse and was infinite recursion: a scriptblock resolves its variables
+    # in the scope that runs it, so the `$Body` inside it found Invoke-Native's OWN parameter -
+    # itself - and PowerShell ended the install with "call depth overflow".
+    $prevScript = $script:ErrorActionPreference
+    $prevGlobal = $global:ErrorActionPreference
+    $script:ErrorActionPreference = "Continue"
+    $global:ErrorActionPreference = "Continue"
+    try {
+        # Captured, then appended - NOT `*>> $LogFile`. A redirection holds the file open for
+        # as long as the command runs, and the next step then fails with "the process cannot
+        # access the file because it is being used by another process".
+        $output = & $Body 2>&1
+    } finally {
+        $script:ErrorActionPreference = $prevScript
+        $global:ErrorActionPreference = $prevGlobal
+    }
     $code = $LASTEXITCODE
     if ($output) {
         try { ($output | Out-String) | Add-Content -Path $LogFile -Encoding UTF8 } catch { }
