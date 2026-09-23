@@ -65,16 +65,91 @@ distro run separate git installs with separate global config, so `zerotrace inst
 must be run once **in each environment** that will commit. See
 `docs/DEPLOYMENT.md` for the detection and bootstrap design.
 
-## Uninstall
+## What the installer does, step by step
 
-The installer removes what it installed, in the order that keeps a machine consistent: git
-hooks first (so no repo points at a binary that is about to vanish), then the package, the
-PATH entry and `~/.zerotrace`. Repos, history and files are never touched.
+```
+[1/6] Checking this machine     OS, git >= 2.9, Python >= 3.11, the venv module, free disk
+[2/6] Creating the environment  ~/.zerotrace/venv, hash-locked wheels, then the wheel itself
+[3/6] Checking Docker           installed? running? may this user talk to it? image present?
+[4/6] Installing the git hooks  16 shims + core.hooksPath, chaining whatever was there before
+[5/6] Preparing the local model docker compose up, then the model pull (skip with --no-model)
+[6/6] Validating the install    a throwaway repo, a staged fake credential, a refused commit
+```
+
+Everything lands in two places: `~/.zerotrace` (the environment, the hooks, the state and the
+install log) and `~/.local/bin` (`zerotrace`, `zerotrace-uninstall`). On Windows both live
+under `%USERPROFILE%\.zerotrace`, and `%USERPROFILE%\.zerotrace\bin` is added to the user
+PATH through the registry (not `setx`, which truncates a PATH longer than 1024 characters).
+
+**Never the system Python.** PEP 668 marks a distribution's Python as externally managed, and
+Homebrew, Debian, Ubuntu and Fedora all refuse `pip install --user` on it. ZeroTrace builds a
+virtualenv it owns, which is also what makes uninstalling exact.
+
+### Options
+
+| Option | What it is for |
+| --- | --- |
+| `--version vX.Y.Z` | a particular release instead of the latest |
+| `--ref main` | build from a git branch - development |
+| `--from <dir>` | install from release files already downloaded: air-gapped machines, CI |
+| `--no-model` | skip Docker and the model entirely (several GB on a first run) |
+| `--with-pii` | also install the Presidio NER engine (not hash-locked) |
+| `--verbose` | print every line instead of one progress bar |
+| `--ascii` | draw with ASCII only |
+
+### Installing without a network
+
+Everything the installer needs can be fetched in advance:
 
 ```bash
-./install.sh --uninstall            # macOS / Linux (also: curl … | bash -s -- --uninstall)
-pwsh -File .\install.ps1 -Uninstall # Windows
+gh release download v0.3.0 --dir ./zt-release          # wheel, lock, installers, SHA256SUMS
+pip download --require-hashes --only-binary :all: \
+    -r ./zt-release/requirements-install.txt -d ./wheelhouse
+# on the target machine:
+PIP_NO_INDEX=1 PIP_FIND_LINKS=$PWD/wheelhouse bash ./zt-release/install.sh \
+    --from ./zt-release --no-model
 ```
+
+`PIP_NO_INDEX` and `PIP_FIND_LINKS` are pip's own variables; the installer passes nothing of
+its own and simply lets pip read them.
+
+## Docker
+
+The AI tie-break runs `ollama/ollama` (pinned by version *and* digest in
+`docker/docker-compose.yml`, which ships inside the wheel) with Qwen2.5-Coder 3B. It is
+optional, and the installer treats it that way.
+
+| State | What you are told | Effect |
+| --- | --- | --- |
+| running | the image is pulled and `zerotrace-ollama` started | MEDIUM findings are settled by the model |
+| installed, stopped | `start Docker Desktop (open -a Docker) …, then run zerotrace model up` | HIGH/CRITICAL still block, MEDIUM warns |
+| permission denied | `sudo usermod -aG docker $USER`, and that this group is root-equivalent | as above |
+| not installed | the install command for this OS, plus native Ollama as an alternative | as above |
+| unresponsive | that the daemon did not answer in 15s | as above |
+
+`zerotrace model status` asks again at any time; `zerotrace model up` starts it; `zerotrace
+model down` stops it and keeps the image and weights, `--purge` removes those too.
+
+## Uninstall
+
+One command, and it removes exactly what was installed, in the order that keeps a machine
+consistent: the git hooks first (so no repo points at an interpreter that is about to vanish),
+then the model container, the environment, the launchers, the PATH lines and `~/.zerotrace`.
+
+```bash
+zerotrace-uninstall               # macOS / Linux / WSL
+zerotrace-uninstall --purge       # ... and the model image and weights
+./install.sh --uninstall          # the same, from a clone or piped
+```
+
+```powershell
+zerotrace-uninstall               # Windows
+pwsh -File .\install.ps1 -Uninstall
+```
+
+It never touches a line in your shell profile that it did not write (they carry an
+`# added by ZeroTrace installer` marker), never touches a repository, and running it twice
+says "nothing to remove" rather than failing.
 
 Re-installing is the same one line as a first install, so install/uninstall cycles are a
 reasonable way to test a machine. After each cycle:

@@ -5,6 +5,34 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+- A guided installer. `install.sh` and `install.ps1` now walk six steps - this machine, the
+  environment, Docker, the git hooks, the local model, and a validation that stages a
+  credential-shaped value in a throwaway repo and proves the commit is refused - with one
+  progress bar, the ZeroTrace mark, and a clear sentence for every state it finds. Steps three
+  to six are `zerotrace setup`, so macOS, Linux, WSL and Windows behave identically.
+- `zerotrace model status | up | down [--purge]` and Docker rows in `zerotrace doctor`:
+  whether Docker is installed, running and reachable by this user, whether the pinned image is
+  present, whether the container is healthy and whether the model answers - each with the one
+  command that fixes it on this OS. Without Docker the deterministic rules still block every
+  HIGH/CRITICAL finding and ambiguous ones WARN; nothing fails because a daemon is off.
+- Installing from a published release: the installer resolves the latest release (or
+  `--version vX.Y.Z`), verifies every file against the release's `SHA256SUMS`, and refuses to
+  install anything that does not match. `--from <dir>` installs from files downloaded earlier,
+  which is what air-gapped machines and CI use.
+- `zerotrace-uninstall`: one command that removes the hooks, the model container, the
+  environment, the launchers and the PATH entries, keeps the multi-gigabyte model cache unless
+  `--purge`, touches no repository, and says "nothing to remove" when run twice.
+- Releases are verified before they are published: every release installs and uninstalls on
+  Linux, macOS and Windows from its own artifacts, is created as a draft and only then made
+  public, and ships `SHA256SUMS`, the hash-locked `requirements-install.txt` and installers
+  stamped with their own version. `docs/RELEASING.md` documents the flow end to end.
+- `policy.pii.internal_domains`: which email domains belong to an organisation is now policy
+  (empty by default), so an employee address is graded HIGH where a fleet says so.
+- End-to-end flows live in `tests/e2e/` and run on all three OSes in CI: install, re-install,
+  uninstall, uninstall twice, a tampered wheel, a failed install rolling back, and every
+  Docker state through a fake daemon.
+
+### Changed
 - Releases tag and publish themselves (`.github/workflows/release.yml`). Start one with the
   **Run workflow** button (pick patch, minor or major), by pushing a commit to main that raises
   the version, or by pushing a `vX.Y.Z` tag by hand. Each run gates on the full test suite,
@@ -12,13 +40,26 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   version's CHANGELOG section as notes; a version that is already released is skipped.
   `scripts/release.py` does the version bump (every declaration, the CHANGELOG section and its
   compare link), the release decision, the notes and the tag message.
-### Changed
+- The installer builds a virtualenv of its own (`~/.zerotrace/venv`) instead of
+  `pip install --user`, which a PEP 668 Python - Homebrew, Debian, Ubuntu, Fedora - refuses
+  outright. A failed re-install now restores the previous environment rather than leaving the
+  hooks pointing at an interpreter that no longer exists.
+- One accent colour across the product (`ui/theme.py`): the logo, the product name, panel
+  borders, the install progress bar and the full-screen apps are emerald instead of cyan, and
+  every stop of the gradient stays readable on a light terminal as well as a dark one.
+- The model image is pinned by version and digest, ships inside the wheel, and runs with
+  `no-new-privileges`.
 - The logo and name appear only on the first `zerotrace install` on a machine (or the first
   after an uninstall). Blocked commits, scans, pre-push reports and re-installs print just the
   findings or the result.
 - Findings are listed in one order everywhere: what blocks before what only warns, and within
   each the most severe first (critical, high, medium, low), then file and line. The summary
   table, the panels under it, the full-screen reviewer and `scan --format json` all agree.
+
+### Removed
+- The hackathon use-case PDF and `docs/TEAM_PLAN.md` are no longer in the repository: both
+  name people and internal systems. They live beside the clone, and `.gitignore` keeps copies
+  out.
 
 ## [0.2.0] - 2026-09-22
 ### Added

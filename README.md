@@ -46,41 +46,81 @@ verifies a checkout the same way. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
 dev workflow.
 
 Once this repo is public (or org-visible with an auth-aware fetch), the single-command
-installers below work without a manual clone:
+installers below work without a manual clone. Each one installs the **latest published
+release**, verifying every file it downloads against that release's `SHA256SUMS`:
 
 ```bash
-# macOS / Linux - no pip/pipx/uv required, bootstraps Python itself if missing
+# macOS / Linux / WSL - no pip, pipx or uv required; bootstraps Python if it is missing
 curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
 ```
 
 ```powershell
-# Windows - no pip/pipx/uv required, bootstraps Python itself if missing
+# Windows - no pip, pipx or uv required; bootstraps Python if it is missing
 iwr https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -useb | iex
 ```
 
+The installer walks six steps and says what each one found:
+
+```
+[1/6] Checking this machine          git, Python 3.11+, disk
+[2/6] Creating the environment       ~/.zerotrace/venv, hash-locked wheels
+[3/6] Checking Docker                installed? running? may this user use it?
+[4/6] Installing the git hooks       every repo on this machine
+[5/6] Preparing the local model      pulls the image and the model (--no-model skips it)
+[6/6] Validating the install         stages a fake credential and proves the commit is refused
+```
+
+It installs into a virtualenv of its own (`~/.zerotrace/venv`) and never into your system
+Python: `pip install --user` is refused outright by Homebrew's Python and by Debian, Ubuntu and
+Fedora under PEP 668. Pick a version with `--version v0.3.0`, install without a network from
+already-downloaded release files with `--from <dir>`, or build from a branch with `--ref main`.
+
 ### Uninstall (one line)
 
-The same script removes everything it installed: the git hooks first, then the package, the
-PATH entry and `~/.zerotrace`. Your repos, their history and their files are untouched.
+Removal happens in the order that keeps a machine consistent: the git hooks first (so no repo
+is left pointing at an interpreter that is about to vanish), then the model container, then the
+environment, the launchers, the PATH entries and `~/.zerotrace`. Your repos, their history and
+their files are untouched, and so is anything another tool put in your shell profile.
 
 ```bash
-# macOS / Linux - from a clone, or piped
-./install.sh --uninstall
-curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash -s -- --uninstall
+zerotrace-uninstall             # macOS / Linux / WSL
+zerotrace-uninstall --purge     # ... and delete the model image and weights (gigabytes)
+./install.sh --uninstall        # the same thing, from a clone or piped
 ```
 
 ```powershell
-# Windows - from a clone, or piped
+zerotrace-uninstall             # Windows (cmd, PowerShell)
 pwsh -File .\install.ps1 -Uninstall
-&([scriptblock]::Create((iwr https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -useb))) -Uninstall
 ```
+
+The model image and the downloaded weights are **kept** unless you ask for `--purge`: they are
+a multi-gigabyte cache, and an uninstall that silently makes you download them again is a rude
+one. Running it twice is not an error - the second run says there is nothing to remove.
+
+### Docker, and what happens without it
+
+The AI tie-break runs a small model in a container. It is **optional**, and the installer never
+fails because of it - it reports what it found and carries on:
+
+| What the installer finds | What it does | What you get |
+| --- | --- | --- |
+| Docker running | pulls the pinned image, starts `zerotrace-ollama`, pulls the model | ambiguous (MEDIUM) findings are settled by the model |
+| Docker installed, daemon stopped | says so, with the command to start it on your OS | HIGH/CRITICAL still block; MEDIUM findings WARN |
+| Docker installed, permission denied | gives the `usermod -aG docker` line, and the warning that comes with it | as above |
+| Docker not installed | names the install command for your OS, and native Ollama as an alternative | as above |
+| A model already answering (native Ollama, a remote endpoint) | uses it, starts nothing | the tie-break, with no container at all |
+
+`zerotrace model status` answers the same question at any time, and `zerotrace model up` is the
+one command that gets from "Docker is running" to "the model answers". The first run downloads
+a few gigabytes, so `--no-model` skips the whole step.
 
 Install and uninstall repeatedly to check a machine: `zerotrace doctor` reports whether this
 repo is actually protected, and `zerotrace ui` renders every screen so you can confirm the
 terminal you demo from shows them correctly.
 
-Both scripts install ZeroTrace, run `zerotrace install --global` and `zerotrace doctor`
-automatically - one command, nothing left half-configured. If you already have Python tooling:
+Both scripts finish by installing the hooks, bringing the model up and proving that a staged
+credential is actually refused - one command, nothing left half-configured. If you already have
+Python tooling:
 
 ```bash
 pipx install zerotrace && zerotrace install --global && zerotrace doctor
@@ -101,6 +141,8 @@ escape the global install is flagged by `zerotrace doctor` and patched in place 
 | `zerotrace review`                                            | fix a headless block (VS Code, GUI) interactively — full-screen when a terminal and `textual` are installed, the inline flow otherwise |
 | `zerotrace scan --range A..B` / `--all`                     | CI / PR backstop, onboarding scan (`--format json`)                           |
 | `zerotrace init`                                              | repo `.zerotrace.yml` + hashed `.secrets.baseline` for pre-existing findings |
+| `zerotrace setup`                                             | the guided half of an install: Docker check, hooks, model, and a self-test that proves a secret is blocked |
+| `zerotrace model status \| up \| down [--purge]`               | where the AI tie-break stands, and start or stop the local model container |
 | `zerotrace doctor [-i] [--pin-model] [--warm]`                | health check, model integrity pin, warm-up; `-i` is the full-screen view with the fixes one key away |
 | `zerotrace exceptions [-i \| --promote \| --prune]`           | list exceptions; `-i` browses, promotes and revokes them full-screen             |
 | `zerotrace eval`                                              | precision and latency of the AI tie-break on labelled synthetic cases           |
@@ -198,7 +240,7 @@ it no terminal at all, and it must not repaint a developer's scrollback.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-docker compose -f docker/docker-compose.yml up -d     # local Qwen2.5-Coder 3B (optional)
+zerotrace model up                                    # local Qwen2.5-Coder 3B (optional)
 ./demo/run_demo.sh                                    # macOS / Linux
 pwsh -File .\demo\run_demo.ps1                        # Windows
 ```
@@ -232,7 +274,8 @@ in this repository — and `docs/DEPLOYMENT.md` §6.
 
 ## Docs
 
-- `docs/INSTALL.md`: supported OS/distro versions (verified, dated) and per-platform install notes
+- `docs/INSTALL.md`: what the installer does step by step, Docker states, offline installs, uninstall, and supported OS/distro versions
+- `docs/RELEASING.md`: code → version → tag → build → verify → release → install, and what to do when a step fails
 - `docs/ARCHITECTURE.md`: pipeline and module map
 - `docs/DEPLOYMENT.md`: rolling out to every developer (MDM, org policy, CI backstop, agents, WSL)
 - `docs/AI_CLASSIFIER.md` · `docs/AWS_INFERENCE.md`: the model, redaction, measured results, and moving inference to AWS
