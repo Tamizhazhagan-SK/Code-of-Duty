@@ -1,6 +1,7 @@
 """CLI and doctor, driven in-process so behaviour (and coverage) is measured directly."""
 import io
 import json
+import os
 
 import pytest
 
@@ -93,6 +94,37 @@ def test_init_writes_config_and_hashed_baseline(repo, capsys):
     assert baseline["version"] and "results" in baseline
     assert run("init") == 0                       # idempotent: does not clobber the config
     assert "exists" in capsys.readouterr().out
+
+
+def test_the_baseline_records_repo_relative_paths_only(repo, fake):
+    """An absolute path in a committed file carries the username and folder layout of whoever
+    ran `init` - and matches nothing on anyone else's machine, which silently turns the
+    baseline off."""
+    write("app.py", f'KEY = "{fake.aws_key_id()}"\n')
+    git("add", "-A")
+    git("commit", "-qm", "c", "--no-verify")
+    assert run("init") == 0
+    results = json.loads((repo / ".secrets.baseline").read_text())["results"]
+    assert results, "the seeded secret should be in the baseline"
+    for filename in results:
+        assert not os.path.isabs(filename), filename
+        assert str(repo) not in filename
+        assert not filename.startswith("./"), filename
+
+
+def test_regenerating_the_baseline_does_not_grow_it(repo, fake):
+    """The baseline is full of high-entropy hashes, so a scan that includes it records its own
+    fingerprints - and does it again on the next run, and the next."""
+    write("app.py", f'KEY = "{fake.aws_key_id()}"\n')
+    git("add", "-A")
+    git("commit", "-qm", "c", "--no-verify")
+    assert run("init") == 0
+    first = json.loads((repo / ".secrets.baseline").read_text())["results"]
+    assert ".secrets.baseline" not in first
+    assert run("init") == 0
+    second = json.loads((repo / ".secrets.baseline").read_text())["results"]
+    assert {name: len(hits) for name, hits in second.items()} == \
+           {name: len(hits) for name, hits in first.items()}
 
 
 def test_install_and_uninstall_through_the_cli(git_env, repo, capsys):

@@ -30,6 +30,25 @@ def detect(changeset: Changeset, cfg) -> list[Finding]:
     return postprocess(findings, cfg)
 
 
+def _baseline_key(file_path: str, root: str) -> str:
+    """A baseline filename as the scanner spells it: repo-relative, forward slashes.
+
+    Baselines in the wild carry all three spellings - `src/a.py`, `./src/a.py`, and an
+    absolute `/Users/someone/repo/src/a.py` (older `detect-secrets scan` runs and anything
+    invoked with an absolute path write that one). Findings always carry the repo-relative
+    path, so an unnormalised key simply never matched and the whole baseline silently
+    suppressed nothing - the feature that lets an existing repository adopt ZeroTrace.
+    """
+    normalized = file_path.replace("\\", "/")
+    if root:
+        root_prefix = os.path.abspath(root).replace("\\", "/").rstrip("/") + "/"
+        if normalized.startswith(root_prefix):
+            normalized = normalized[len(root_prefix):]
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
+
+
 def _load_baseline(root: str) -> dict[str, set[str]]:
     """detect-secrets baseline: path -> set of sha1(secret). Honoured by every detector."""
     path = os.path.join(root, ".secrets.baseline")
@@ -42,7 +61,7 @@ def _load_baseline(root: str) -> dict[str, set[str]]:
     for file_path, entries in (data.get("results") or {}).items():
         for entry in entries:
             if entry.get("hashed_secret"):
-                out[file_path].add(entry["hashed_secret"])
+                out[_baseline_key(file_path, root)].add(entry["hashed_secret"])
     return out
 
 

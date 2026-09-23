@@ -288,8 +288,17 @@ def init(args) -> int:
         print(f"zerotrace: wrote {path}")
     from detect_secrets.core import baseline
     from detect_secrets.settings import default_settings
+    # Scanned from the repository root (main() already chdir'd there) and WITHOUT `root=`,
+    # so the filenames recorded are repo-relative. An absolute path in a committed file is
+    # both a leak - it carries the username and the folder layout of whoever ran `init` - and
+    # useless to everyone else, because findings are matched by their repo-relative path.
     with default_settings():
-        secrets = baseline.create(".", should_scan_all_files=False, root=root)
+        secrets = baseline.create(".", should_scan_all_files=False)
+        # A baseline that records its own stored hashes grows every time it is regenerated:
+        # each run reads the previous file, sees lines full of high-entropy hex, and writes
+        # them back in. It is a list of fingerprints, not a source file to scan.
+        for spelling in (".secrets.baseline", "./.secrets.baseline"):
+            secrets.data.pop(spelling, None)
         baseline.save_to_file(secrets, os.path.join(root, ".secrets.baseline"))
     count = sum(len(v) for v in secrets.data.values())
     print(f"zerotrace: wrote .secrets.baseline ({count} existing findings, stored as hashes, "
