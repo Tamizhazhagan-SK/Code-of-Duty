@@ -13,6 +13,14 @@ from PyInstaller.utils.hooks import collect_data_files
 # carry the rule pack and eval cases" checks in ci.yml / release.yml) alongside the compiled code.
 datas = collect_data_files("zerotrace")
 
+# The compose file that `zerotrace model up` runs. The wheel gets it through
+# force-include (pyproject.toml); an editable install - which is what the release job builds
+# the binary from - keeps it at docker/, so name it here or the binary cannot start the model.
+datas += [
+    ("docker/docker-compose.yml", "zerotrace/docker"),
+    ("docker/ollama-entrypoint.sh", "zerotrace/docker"),
+]
+
 a = Analysis(
     ["scripts/pyinstaller_entry.py"],
     pathex=["src"],

@@ -13,8 +13,8 @@ from .audit.fingerprint import of_finding
 from .collectors import staged_diff
 from .config import load_config
 
-COMMANDS = ("run", "review", "scan", "pre-push", "init", "install", "uninstall", "doctor", "ui",
-            "exceptions",
+COMMANDS = ("run", "review", "scan", "pre-push", "init", "install", "uninstall", "setup",
+            "model", "doctor", "ui", "exceptions",
             "eval", "gateway", "version")
 _MAX_PUSH_COMMITS = 300
 _SHA_RE = re.compile(r"\A[0-9a-f]{40,64}\Z")
@@ -336,6 +336,30 @@ def uninstall_cmd(args) -> int:
     return 0
 
 
+def setup_cmd(args) -> int:
+    from . import setup as guided
+    outcome = guided.run(scope="system" if args.system else "global",
+                         pull_model=not args.no_model,
+                         step_offset=args.step_offset, total_steps=args.steps)
+    return outcome.code
+
+
+def model_cmd(args) -> int:
+    from . import modelhost
+    cfg = load_config()
+    command = args.model_command or "status"
+    if command == "status":
+        return modelhost.report(cfg)
+    if command == "up":
+        result = modelhost.up(cfg, on_event=lambda line: print(f"zerotrace: {line}"),
+                              pull_model=not args.no_pull)
+        return 0 if result.ok else 1
+    result = modelhost.down(purge=args.purge)
+    for line in result.lines:
+        print(f"zerotrace: {line}")
+    return 0 if result.ok else 1
+
+
 def doctor_cmd(args) -> int:
     if args.fix:
         from . import installer
@@ -451,6 +475,29 @@ def _parser() -> argparse.ArgumentParser:
     un_scope.add_argument("--global", dest="global_", action="store_true")
     un_scope.add_argument("--system", action="store_true")
 
+    st = sub.add_parser("setup", help="check Docker, install the hooks, start the model and "
+                                      "prove a secret is blocked")
+    st_scope = st.add_mutually_exclusive_group()
+    st_scope.add_argument("--global", dest="global_", action="store_true",
+                          help="current user (default)")
+    st_scope.add_argument("--system", action="store_true", help="all users; for MDM/IT rollout")
+    st.add_argument("--no-model", action="store_true",
+                    help="do not pull or start the local model (several GB on a first run)")
+    # The bootstrap installers do the first steps themselves, so they say where in their own
+    # step list this run lands; nobody types these.
+    st.add_argument("--step-offset", type=int, default=0, help=argparse.SUPPRESS)
+    st.add_argument("--steps", type=int, default=0, help=argparse.SUPPRESS)
+
+    m = sub.add_parser("model", help="the local model container: status, up, down")
+    m_sub = m.add_subparsers(dest="model_command")
+    m_sub.add_parser("status", help="is Docker up, is the image here, does the model answer?")
+    m_up = m_sub.add_parser("up", help="start the model container and pull the model")
+    m_up.add_argument("--no-pull", action="store_true",
+                      help="start the container but do not pull the model")
+    m_down = m_sub.add_parser("down", help="stop and remove the model container")
+    m_down.add_argument("--purge", action="store_true",
+                        help="also remove the image and the downloaded model (gigabytes)")
+
     d = sub.add_parser("doctor", help="check install, config layers and the model endpoint")
     d.add_argument("--pin-model", action="store_true", help="pin the served model digest in .zerotrace.yml")
     d.add_argument("--warm", action="store_true", help="load the model into memory now")
@@ -509,7 +556,8 @@ def main(argv: list[str] | None = None) -> None:
 
     handlers = {
         "run": run, "review": review, "scan": scan, "pre-push": pre_push, "init": init,
-        "install": install_cmd, "uninstall": uninstall_cmd, "doctor": doctor_cmd, "ui": ui_cmd,
+        "install": install_cmd, "uninstall": uninstall_cmd, "setup": setup_cmd,
+        "model": model_cmd, "doctor": doctor_cmd, "ui": ui_cmd,
         "exceptions": exceptions_cmd,
         "eval": eval_cmd, "gateway": gateway_cmd,
     }

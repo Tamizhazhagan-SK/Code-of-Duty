@@ -72,6 +72,15 @@ ABOUT = {
                       "allow_remote and https.",
     MODEL_AVAILABLE: "Whether the model answers. When it does not, ambiguous findings warn "
                      "instead of being settled: ZeroTrace fails closed.",
+    "docker": "Docker runs the local model container. It is optional: without it the "
+              "deterministic rules still block every HIGH/CRITICAL finding and ambiguous "
+              "ones warn.",
+    "model image": "The pinned Ollama image the model container runs. `zerotrace model up` "
+                   "downloads it the first time.",
+    "model container": "The zerotrace-ollama container. `zerotrace model up` starts it, "
+                       "`zerotrace model down` stops it.",
+    "model host": "Where the model is served from when it is not a local container.",
+    "next step": "The one thing to do to get the AI tie-break working here.",
     MODEL_WARM_UP: "Loading the model into memory ahead of time, so the first ambiguous "
                    "finding does not wait for it.",
     MODEL_INTEGRITY: "The served model's digest, compared with the one pinned in "
@@ -245,6 +254,22 @@ def _check_integrity(report: Report, cfg: Config, digest: str, pin_model: bool) 
         report.add(WARN, MODEL_INTEGRITY, "digest not pinned (`zerotrace doctor --pin-model`)")
 
 
+def _check_model_host(report: Report, cfg: Config) -> str:
+    """Why the model is not answering: Docker, the image, the container - in that order.
+
+    Only asked when the endpoint is silent. When the model answers, how it is being served is
+    not a question anybody has, and `docker info` on a sleeping Docker Desktop is slow.
+    Returns the one thing to do about it, which the caller prints under the model row.
+    """
+    from . import modelhost
+    status = modelhost.probe(cfg, check_model=False)
+    for state, check, result in modelhost.rows(status):
+        if check == "model":
+            continue                       # the model row is the caller's to add
+        report.add(OK if state == "ok" else WARN, check, result)
+    return status.hint
+
+
 def _check_warm(report: Report, cfg: Config) -> None:
     from .classifier import llm
     took = llm.warm(cfg)
@@ -264,9 +289,12 @@ def _check_model(report: Report, cfg: Config, pin_model: bool, warm: bool) -> No
     digest = llm.model_digest(cfg)
     latency = (time.monotonic() - start) * 1000
     if digest is None:
+        hint = _check_model_host(report, cfg)
         report.add(WARN, MODEL_AVAILABLE,
                    f"{cfg.model_name} not reachable/served ({latency:.0f} ms). MEDIUM findings "
-                   "will WARN. Start it: `docker compose -f docker/docker-compose.yml up -d`")
+                   "will WARN. Start it: `zerotrace model up`")
+        if hint:
+            report.add(WARN, "next step", hint)
     else:
         report.add(OK, MODEL_AVAILABLE, f"{cfg.model_name} · {digest[:19]}… ({latency:.0f} ms)")
         if warm:

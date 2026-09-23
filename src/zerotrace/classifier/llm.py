@@ -36,10 +36,23 @@ def check_endpoint(cfg) -> None:
             raise EndpointRefused("remote model endpoints must use https://")
 
 
-def _opener(cfg):
+def opener(cfg):
+    """The URL opener for this endpoint. A local endpoint bypasses every proxy env var, so a
+    redacted prompt - or a model download - cannot be routed off-box by a proxy setting."""
     if cfg.model_is_remote:
         return urllib.request.build_opener()  # corporate proxies allowed for remote
     return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def forget_digest() -> None:
+    """Drop the cached model identity.
+
+    The cache remembers "not served" too, which is the right answer for the length of one
+    commit and the wrong one the moment something starts the container - `zerotrace model up`
+    and `zerotrace setup` call this after they change what is running.
+    """
+    with _digest_lock:
+        _digest_cache.clear()
 
 
 def _headers(cfg) -> dict:
@@ -55,7 +68,7 @@ def http_json(cfg, method: str, path: str, payload: dict | None, timeout: float)
     url = cfg.model_endpoint.rstrip("/") + path
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers=_headers(cfg))
-    with _opener(cfg).open(req, timeout=timeout) as resp:
+    with opener(cfg).open(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
