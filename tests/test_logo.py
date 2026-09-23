@@ -4,7 +4,7 @@ import io
 import pytest
 from rich.console import Console
 
-from zerotrace.ui import logo
+from zerotrace.ui import logo, theme
 
 _ENV_KEYS = ("ZEROTRACE_LOGO", "KITTY_WINDOW_ID", "TERM", "TERM_PROGRAM", "CI", "NO_COLOR")
 _BLOCKS = set("░▒▓█")   # the shading ramp the unicode tier draws with
@@ -23,7 +23,8 @@ def _console(*, terminal: bool = True, color: str | None = "truecolor", width: i
 
 
 def _plain(art: str) -> str:
-    return art.replace(logo._WHITE, "").replace(logo._RESET, "")
+    """The art with every colour escape removed, whichever tier painted it."""
+    return logo._ANSI_RE.sub("", art)
 
 
 def _shows_the_name(art: str) -> bool:
@@ -89,14 +90,23 @@ def test_ci_forces_ascii_even_on_a_capable_terminal(monkeypatch):
 def test_no_color_disables_colour_and_unicode(monkeypatch):
     monkeypatch.setenv("NO_COLOR", "1")
     art = logo.render(_console())
-    assert logo._WHITE not in art
+    assert "\033[" not in art
     assert not _BLOCKS & set(art)
 
 
 def test_colour_is_applied_only_when_the_console_has_a_colour_system(monkeypatch):
     monkeypatch.setenv("ZEROTRACE_LOGO", "ascii")
-    assert logo._WHITE in logo.render(_console(color="truecolor"))
-    assert logo._WHITE not in logo.render(_console(color=None))
+    colour = _console(color="truecolor")
+    assert theme.accent_escape(colour) in logo.render(colour)
+    assert "\033[" not in logo.render(_console(color=None))
+
+
+def test_the_mark_and_the_name_are_drawn_in_the_brand_accent(monkeypatch):
+    """One accent for the logo, the panels, the progress bar and the installers."""
+    monkeypatch.setenv("ZEROTRACE_LOGO", "unicode")
+    art = logo.render(_console(color="truecolor"))
+    assert "38;2;{};{};{}".format(*theme.ACCENT_RGB) in art
+    assert "38;5;" not in art, "a truecolour terminal gets the exact accent, not an index"
 
 
 # --- width fallbacks ------------------------------------------------------------------
@@ -147,19 +157,20 @@ def test_missing_assets_degrade_to_the_wordmark(monkeypatch):
     assert art.splitlines()[0] == "ZEROTRACE"
 
 
-# --- the card rendering (the mark as designed: dark on a light card) --------------------
+# --- the card rendering (the mark as designed: the accent on a light card) --------------
 
 def test_card_tier_paints_a_light_background(monkeypatch):
     monkeypatch.setenv("ZEROTRACE_LOGO", "card")
     art = logo.render(_console(width=120))
     assert "\033[48;2;245;245;245m" in art or "48;2;245;245;245m" in art
-    assert "38;2;16;16;16" in art, "the silhouette is painted dark on the card"
+    assert "38;2;{};{};{}".format(*theme.ACCENT_RGB) in art, \
+        "the silhouette itself is painted, so its cut-outs stay light"
 
 
 def test_card_tier_falls_back_to_256_colour(monkeypatch):
     monkeypatch.setenv("ZEROTRACE_LOGO", "card")
     art = logo.render(_console(width=120, color="256"))
-    assert "\033[38;5;232;48;5;255m" in art
+    assert f"\033[38;5;{theme.ACCENT_256};48;5;255m" in art
 
 
 def test_card_is_used_automatically_on_a_colour_terminal():

@@ -16,11 +16,21 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.markup import escape
 from textual.message import Message
 from textual.screen import ModalScreen
+from textual.theme import Theme
 from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Header, Label, Static
 from textual.widgets import Markdown as MarkdownView
 
+from . import theme
+
 ItemT = TypeVar("ItemT")
+
+# The accent every app borrows from `ui/theme.py`. Textual derives the rest of its palette
+# (borders, focus, selection, zebra stripes) from these, so the three full-screen apps, the
+# inline flow and the installer are visibly one product. Success/warning/error keep Textual's
+# defaults on purpose: a verdict must not be drawable in the brand colour.
+BRAND = Theme(name=theme.TUI_THEME, primary=theme.TUI_PRIMARY, secondary=theme.TUI_SECONDARY,
+              accent=theme.TUI_ACCENT, dark=True)
 
 def key(letter: str, action: str, description: str, *, also: str = "") -> Binding:
     """A letter bound in both cases and shown as the capital, the way the help and the
@@ -328,6 +338,10 @@ class ListDetailApp(App[int], Generic[ItemT]):
         yield Footer()
 
     def on_mount(self) -> None:
+        # The brand theme before anything is drawn, so `$accent` (borders, focus, selection)
+        # is the same emerald the logo, the panels and the installer use.
+        self.register_theme(BRAND)
+        self.theme = theme.TUI_THEME
         for label, width in self.COLUMNS:
             self.table.add_column(label, width=width)
         self.table.focus()
