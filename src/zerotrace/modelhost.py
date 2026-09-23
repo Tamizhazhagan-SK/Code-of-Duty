@@ -46,6 +46,16 @@ GONE, CREATED, STARTING, UP, UNHEALTHY = "gone", "created", "starting", "up", "u
 _INFO_TIMEOUT = 15.0                   # `docker info` on a waking Docker Desktop is slow
 _QUICK_TIMEOUT = 10.0
 _HEALTH_TIMEOUT = 180.0                # the container pulls nothing; it just has to come up
+_WAIT_ENV = "ZEROTRACE_MODEL_WAIT_SECONDS"
+
+
+def _health_timeout() -> float:
+    """How long to wait for the model server to answer. Three minutes covers a cold Docker
+    Desktop on a laptop; a slow machine (or a test) can say otherwise."""
+    try:
+        return max(1.0, float(os.environ[_WAIT_ENV]))
+    except (KeyError, ValueError):
+        return _HEALTH_TIMEOUT
 
 # Read from the daemon's own error text. "dial unix …" is deliberately NOT a permission
 # marker: a stopped Docker Desktop on macOS says "dial unix …/docker.sock: connect: no such
@@ -299,7 +309,7 @@ def _endpoint_answers(cfg, timeout: float = 3.0) -> bool:
 def up(cfg, on_event: Callable[[str], None] | None = None, pull_model: bool = True,
        wait: float | None = None) -> Result:
     """Start the container and make sure the model is there. Reports; never raises."""
-    wait = _HEALTH_TIMEOUT if wait is None else wait
+    wait = _health_timeout() if wait is None else wait
     result = Result()
     say = on_event or (lambda _line: None)
 

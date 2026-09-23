@@ -157,6 +157,36 @@ def test_tag_message_takes_the_summary_from_the_prepare_commit(project):
     assert release.tag_message("v1.2.3", _git(root, "rev-parse", "HEAD"), root) == "v1.2.3"
 
 
+@pytest.mark.parametrize("bad_sha", [
+    "HEAD; rm -rf /",            # a shell metacharacter, in case a caller ever uses a shell
+    "--upload-pack=touch /tmp/x",  # an option, not a revision
+    "$(whoami)",
+    "main",                      # a ref, not an object name: refs can be made to point anywhere
+    "",
+])
+def test_a_commit_that_is_not_a_hex_object_name_never_reaches_git(project, bad_sha):
+    """`tag-message` is called with values that came from the workflow's own input box, so
+    everything it hands to git is rebuilt from a strict pattern first."""
+    with pytest.raises(release.ReleaseError):
+        release.tag_message("v1.2.3", bad_sha, root=project)
+
+
+@pytest.mark.parametrize("bad_tag", ["v1.2", "1.2.3", "v1.2.3 --exec=id", "../../etc/passwd",
+                                     "v1.2.3\nv1.2.4"])
+def test_a_tag_that_is_not_a_version_is_refused(project, bad_tag):
+    with pytest.raises(release.ReleaseError):
+        release.tag_message(bad_tag, "0" * 40, root=project)
+    with pytest.raises(release.ReleaseError):
+        release.notes(bad_tag, root=project)
+
+
+def test_a_checked_value_is_the_rebuilt_match_not_the_original(project):
+    """Rebuilding is the point: the validated string is a new object, so a tainted one cannot
+    be passed through by a later refactor that forgets to re-validate."""
+    assert release.checked_sha("  " + "a" * 40 + "  ") == "a" * 40
+    assert release.checked_tag(" v1.2.3 ") == "v1.2.3"
+
+
 def test_the_real_changelog_notes_for_the_current_version_are_extractable():
     """What the next run of the release workflow will read from this checkout."""
     version = release.current_version()

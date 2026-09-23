@@ -26,6 +26,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 _SEMVER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+# Everything that reaches a git command line is matched against one of these and then REBUILT
+# from the match, so a value taken from argv or from the workflow's inputs can never be passed
+# through to git - the same rule gitutil.checked_rev follows for the scanner's own git calls.
+_TAG_RE = re.compile(r"v\d+\.\d+\.\d+")
+_SHA_RE = re.compile(r"[0-9a-fA-F]{7,64}")
 # (file, pattern matching the version declaration, replacement with {} for the version)
 _DECLARATIONS = (
     ("pyproject.toml", r'^version = "[^"]*"', 'version = "{}"'),
@@ -126,7 +131,7 @@ def bump(how: str, root: Path = ROOT, today: str | None = None) -> str:
 
 def notes(tag: str, root: Path = ROOT) -> str:
     """The CHANGELOG section for `tag`, which becomes the GitHub release notes."""
-    version = re.escape(tag.removeprefix("v"))
+    version = re.escape(checked_tag(tag).removeprefix("v"))
     text = (root / "CHANGELOG.md").read_text(encoding="utf-8")
     match = re.search(rf"^## \[{version}\].*?(?=^## \[|^\[[^\]]+\]: |\Z)", text,
                       re.MULTILINE | re.DOTALL)
@@ -135,8 +140,26 @@ def notes(tag: str, root: Path = ROOT) -> str:
     return match.group(0).strip() + "\n"
 
 
+def checked_tag(tag: str) -> str:
+    """`vX.Y.Z`, rebuilt from the match. Anything else never reaches git or a file read."""
+    match = _TAG_RE.fullmatch((tag or "").strip())
+    if match is None:
+        raise ReleaseError(f"not a release tag: {tag!r} (expected vX.Y.Z)")
+    return match.group(0)
+
+
+def checked_sha(sha: str) -> str:
+    """A hex object name, rebuilt from the match: no refs, no ranges, no options."""
+    match = _SHA_RE.fullmatch((sha or "").strip())
+    if match is None:
+        raise ReleaseError(f"not a commit sha: {sha!r}")
+    return match.group(0)
+
+
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+    """Run git with an argument LIST (never a shell string). Callers pass literals, or values
+    that went through checked_tag / checked_sha first."""
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
 
 
 def plan(env: dict | os._Environ = os.environ, root: Path = ROOT) -> dict[str, str]:
@@ -147,7 +170,7 @@ def plan(env: dict | os._Environ = os.environ, root: Path = ROOT) -> dict[str, s
     ordinary push is a no-op and a re-run never publishes twice.
     """
     version = current_version(root)
-    tag = f"v{version}"
+    tag = checked_tag(f"v{version}")     # pyproject.toml is a file, and files can be edited
     if env.get("GITHUB_REF_TYPE") == "tag":
         if env.get("GITHUB_REF_NAME") != tag:
             raise ReleaseError(f"tag {env.get('GITHUB_REF_NAME')} does not match "
@@ -161,8 +184,14 @@ def plan(env: dict | os._Environ = os.environ, root: Path = ROOT) -> dict[str, s
 
 
 def tag_message(tag: str, sha: str, root: Path = ROOT) -> str:
-    """`vX.Y.Z - <summary>`, the summary taken from a "chore: prepare vX.Y.Z - …" commit."""
-    subject = _git(root, "log", "-1", "--format=%s", sha).stdout.strip()
+    """`vX.Y.Z - <summary>`, the summary taken from a "chore: prepare vX.Y.Z - …" commit.
+
+    Both arguments come from the workflow (ultimately from a person typing in the "Run
+    workflow" box), so both are rebuilt from a strict pattern before git sees them, and the
+    commit is named with `--` so a value can never be read as an option.
+    """
+    tag, sha = checked_tag(tag), checked_sha(sha)
+    subject = _git(root, "log", "-1", "--format=%s", sha, "--").stdout.strip()
     match = re.fullmatch(rf"chore: prepare {re.escape(tag)} - (.+)", subject)
     return f"{tag} - {match.group(1)}" if match else tag
 

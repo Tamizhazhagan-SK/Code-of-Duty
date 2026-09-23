@@ -62,6 +62,8 @@ def _check_docker(outcome: Outcome, cfg: Config) -> modelhost.Status:
     status = modelhost.probe(cfg)
     outcome.model_status = status
     for state, check, result in modelhost.rows(status):
+        if check == "model":
+            continue          # the model step below owns that row; one machine, one sentence
         outcome.add(state, check, result)
     return status
 
@@ -234,7 +236,9 @@ def _print(console, outcome: Outcome) -> None:
                     ("zerotrace review", "fix a blocked commit, full-screen"),
                     ("zerotrace model status", "where the AI tie-break stands"),
                     ("zerotrace-uninstall", "remove everything the installer added"))
+        width = max(len(command) for command, _ in commands)
         for command, what in commands:
-            console.print(f"  [bold]{command}[/]  [dim]{escape(what)}[/]")
+            console.print(f"  [bold]{command.ljust(width)}[/]  [dim]{escape(what)}[/]",
+                          highlight=False)
     for hint in dict.fromkeys(step for step in outcome.next_steps if step):
         console.print(glyphs.sanitize(f"→ {hint}", console), highlight=False)
