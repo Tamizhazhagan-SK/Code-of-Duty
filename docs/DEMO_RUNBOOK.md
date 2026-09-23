@@ -5,7 +5,7 @@ Rehearsed end-to-end on Windows; see "Known rough edges" below before presenting
 
 ## Before you start
 
-1. Start the local model: `docker compose -f docker/docker-compose.yml up -d` (Ollama, bound to
+1. Start the local model: `zerotrace model up` (Ollama in Docker, bound to
    `127.0.0.1:11434` only — nothing leaves the laptop).
 2. Open a real terminal window (Windows Terminal, not a redirected/piped one) so the
    `[V/R/U/E/A]` interactive fix-menu prompts in `zerotrace review` work.

@@ -9,6 +9,25 @@
 3. Any code that touches a candidate value must go through `redaction` first if
    it can reach a log, a prompt, or disk.
 
+## Which identity your commits carry
+
+Commits here should carry your work identity, not whichever one your machine defaults to. Set
+it per clone, or - better - once for every clone of this account's repositories:
+
+```bash
+git config --local user.name "Your Name" && git config --local user.email "you@company.example"
+
+# or, for every repository whose remote belongs to this account (git 2.36+):
+#   ~/.gitconfig
+#   [includeIf "hasconfig:remote.*.url:git@github.com:Tamizhazhagan-SK/**"]
+#       path = ~/.config/git/work.gitconfig
+```
+
+Check it before your first push with `git log -1 --format='%an <%ae>'`, and make sure that
+address is on your GitHub account (Settings → Emails) or the commit will not be attributed to
+you. Pushing over SSH keeps the identity and the key together; `ssh -T git@github.com` names
+the account you are actually authenticated as.
+
 ## Dev setup
 
 This repo is currently private, so clone it with your own git credentials first, then
@@ -75,9 +94,13 @@ git push                                        # a new version on main starts t
 
 **By hand**, as before: push an annotated `vX.Y.Z` tag that matches `pyproject.toml`.
 
-A version that already has its release is skipped, so re-running is harmless. If a release
-run fails half-way, fix forward with the next patch version; never move a tag that has been
-pushed.
+A version that already has its release is skipped, so re-running is harmless. Nothing is
+published until it has installed and uninstalled cleanly on Linux, macOS and Windows. If a run
+fails half-way, re-run it - the workflow releases the version already prepared on main instead
+of burning another number. Never move a tag that has been pushed; fix forward with a patch.
+
+**[docs/RELEASING.md](docs/RELEASING.md)** has the whole flow, every safeguard, what to do when
+a step fails, and what each published asset is for.
 
 ### One-time repository settings
 
