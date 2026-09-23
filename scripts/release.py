@@ -158,6 +158,22 @@ def checked_sha(sha: str) -> str:
     return match.group(0)
 
 
+def checked_out_dir(out: str | Path, root: Path = ROOT) -> Path:
+    """An output directory, proven to be inside the repository before anything is written.
+
+    `stamp` takes its destination from the command line, so `../../.ssh` or an absolute path
+    must not be a way to have this script write files anywhere on the machine. Resolving
+    first is what makes it hold for symlinks too: a link inside the repo pointing out of it
+    resolves to the outside and is refused.
+    """
+    base = Path(root).resolve()
+    candidate = Path(out)
+    resolved = (candidate if candidate.is_absolute() else base / candidate).resolve()
+    if resolved != base and base not in resolved.parents:
+        raise ReleaseError(f"refusing to write outside the repository: {out!r}")
+    return resolved
+
+
 # The installers cannot import anything from the package - they run before Python exists - so
 # the release version is written into the copies that are attached to the release. That is what
 # makes `releases/latest/download/install.sh` install the release it came from instead of
@@ -169,10 +185,15 @@ _STAMPS = (
 )
 
 
-def stamp(tag: str, out: Path, root: Path = ROOT) -> list[Path]:
-    """Write `tag` into copies of the installers in `out`. Returns what it wrote."""
+def stamp(tag: str, out: str | Path, root: Path = ROOT) -> list[Path]:
+    """Write `tag` into copies of the installers in `out`. Returns what it wrote.
+
+    Both arguments come from the command line, so both are validated and rebuilt first: the
+    tag against `vX.Y.Z`, the directory against the repository it must stay inside.
+    """
     tag = checked_tag(tag)
-    out.mkdir(parents=True, exist_ok=True)
+    destination = checked_out_dir(out, root)
+    destination.mkdir(parents=True, exist_ok=True)
     written = []
     for name, pattern, replacement in _STAMPS:
         text = (root / name).read_text(encoding="utf-8")
@@ -180,7 +201,8 @@ def stamp(tag: str, out: Path, root: Path = ROOT) -> list[Path]:
         if count != 1:
             raise ReleaseError(f"no version placeholder in {name}; scripts/release.py and the "
                                "installer disagree about where the release version goes")
-        target = out / name
+        # `name` is one of this module's own literals, never anything a caller supplied.
+        target = destination / name
         target.write_text(stamped, encoding="utf-8")
         # The shell installer is downloaded and run; it keeps the bit it is committed with.
         if name.endswith(".sh"):
@@ -310,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"release: {state['tag']} is prepared on main but has no tag yet",
                       file=sys.stderr)
         elif args.command == "stamp":
-            for path in stamp(args.tag, Path(args.out)):
+            for path in stamp(args.tag, args.out):
                 print(path)
         elif args.command == "notes":
             sys.stdout.write(notes(args.tag))

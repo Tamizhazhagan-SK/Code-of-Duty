@@ -25,3 +25,7 @@ db62fe48a8df78e3aeedc550d679688557e40c45:.secrets.baseline:generic-api-key:126
 db62fe48a8df78e3aeedc550d679688557e40c45:.secrets.baseline:generic-api-key:135
 db62fe48a8df78e3aeedc550d679688557e40c45:.secrets.baseline:generic-api-key:144
 db62fe48a8df78e3aeedc550d679688557e40c45:.secrets.baseline:generic-api-key:153
+
+# This file's own first version quoted that placeholder in a comment, which was enough for a
+# scanner to flag the ignore file. The wording was fixed; the old blob stays in history.
+0e0f416f41678aae404f449ade60eb5754c66dc7:.gitleaksignore:stripe-access-token:8

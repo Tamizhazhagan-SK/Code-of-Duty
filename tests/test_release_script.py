@@ -204,27 +204,59 @@ def test_pending_says_when_a_prepared_version_has_no_tag_yet(project):
     assert release.pending(root)["pending"] == "false"
 
 
-def test_stamp_writes_the_version_into_installer_copies(tmp_path):
-    out = tmp_path / "out"
-    written = release.stamp("v1.2.3", out)
+@pytest.fixture
+def installers(project) -> Path:
+    """A copy of the repository that has the two installers in it, so stamping can write into
+    it without the tests touching the real checkout."""
+    for name in ("install.sh", "install.ps1"):
+        shutil.copy(ROOT / name, project / name)
+    return project
+
+
+def test_stamp_writes_the_version_into_installer_copies(installers):
+    written = release.stamp("v1.2.3", "dist", root=installers)
     assert {path.name for path in written} == {"install.sh", "install.ps1"}
+    out = installers / "dist"
     assert 'RELEASE_VERSION="v1.2.3"' in (out / "install.sh").read_text(encoding="utf-8")
     assert '$ReleaseVersion = "v1.2.3"' in (out / "install.ps1").read_text(encoding="utf-8")
     # The originals are placeholders still: a clone installs from itself, not from a release.
     assert 'RELEASE_VERSION=""' in (ROOT / "install.sh").read_text(encoding="utf-8")
 
 
-def test_a_stamped_installer_is_still_executable(tmp_path):
+def test_a_stamped_installer_is_still_executable(installers):
     """It is downloaded and run; losing the bit turns `./install.sh` into "permission denied"."""
     import os
-    written = release.stamp("v1.2.3", tmp_path / "out")
+    written = release.stamp("v1.2.3", "dist", root=installers)
     shell = [path for path in written if path.name == "install.sh"][0]
     assert os.access(shell, os.X_OK)
 
 
-def test_stamping_refuses_a_version_that_is_not_a_tag(tmp_path):
+def test_stamping_refuses_a_version_that_is_not_a_tag(installers):
     with pytest.raises(release.ReleaseError):
-        release.stamp("latest", tmp_path / "out")
+        release.stamp("latest", "dist", root=installers)
+
+
+@pytest.mark.parametrize("escape", ["../outside", "../../../../tmp/evil", "/tmp/evil",
+                                    "dist/../../outside"])
+def test_stamping_refuses_to_write_outside_the_repository(project, escape):
+    """The destination comes from the command line; it must not be a way to write files
+    anywhere on the machine."""
+    with pytest.raises(release.ReleaseError, match="outside the repository"):
+        release.stamp("v1.2.3", escape, root=project)
+
+
+def test_a_symlink_that_leaves_the_repository_is_refused(project, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("elsewhere")
+    link = project / "dist"
+    link.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(release.ReleaseError, match="outside the repository"):
+        release.stamp("v1.2.3", "dist", root=project)
+
+
+def test_a_relative_destination_lands_inside_the_repository(installers):
+    written = release.stamp("v1.2.3", "dist", root=installers)
+    assert all(str(path).startswith(str(installers.resolve())) for path in written)
+    assert (installers / "dist" / "install.sh").exists()
 
 
 @pytest.mark.parametrize("bad_sha", [
