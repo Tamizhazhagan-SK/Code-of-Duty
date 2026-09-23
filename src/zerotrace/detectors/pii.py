@@ -24,8 +24,9 @@ _AADHAAR_RE = re.compile(r"(?<![\w-])[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}(?![\w-])")
 _CARD_RE = re.compile(r"(?<![\w-])(?:\d[ -]?){12,18}\d(?![\w-])")
 _IBAN_RE = re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b")
 
-# Internal/employee email domains -> higher severity than a generic email.
-_INTERNAL_DOMAINS = {"bmwtechworks.in", "bti.bmwgroup.com"}
+# Internal/employee email domains -> higher severity than a generic email. Which domains
+# those are is set by the organisation (`policy.pii.internal_domains`, see
+# deploy/policy.example.yml); a company's domain list does not belong in this tool's source.
 # RFC 2606 reserved domains -> our own synthetic replacements land here; don't
 # re-flag them as a fresh finding on the next scan.
 _RESERVED_DOMAINS = {"example.com", "example.org", "example.net", "example.test", "localhost"}
@@ -92,14 +93,15 @@ def _mk(unit: Unit, rule_id: str, severity: str, confidence: float, value: str,
 _URI_USERINFO_RE = re.compile(r"://[^\s/@]*$")
 
 
-def _email_finding(match: re.Match, unit: Unit) -> Finding | None:
+def _email_finding(unit: Unit, match: re.Match,
+                   internal_domains: frozenset[str]) -> Finding | None:
     if _URI_USERINFO_RE.search(unit.text[:match.start()]):
         return None  # userinfo in a URI is a credential; the rule pack handles it
     local, domain = match.group(0).rsplit("@", 1)
     domain = domain.lower()
     if local.lower() in _NON_PERSON_LOCALS:
         return None
-    internal = domain in _INTERNAL_DOMAINS
+    internal = domain in internal_domains
     reserved = domain in _RESERVED_DOMAINS or domain.endswith((".example", ".test", ".invalid"))
     severity = "low" if reserved else ("high" if internal else "medium")
     confidence = 0.2 if reserved else (0.9 if internal else 0.6)
@@ -111,8 +113,8 @@ def _email_finding(match: re.Match, unit: Unit) -> Finding | None:
     return _mk(unit, rule, severity, confidence, match.group(0), explain)
 
 
-def _emails(unit: Unit) -> list[Finding]:
-    found = [_email_finding(m, unit) for m in _EMAIL_RE.finditer(unit.text)]
+def _emails(unit: Unit, internal_domains: frozenset[str] = frozenset()) -> list[Finding]:
+    found = [_email_finding(unit, m, internal_domains) for m in _EMAIL_RE.finditer(unit.text)]
     return [f for f in found if f is not None]
 
 
@@ -174,14 +176,17 @@ def _ibans(unit: Unit) -> list[Finding]:
             for m in _IBAN_RE.finditer(unit.text) if iban_valid(m.group(0))]
 
 
-_SCANNERS = (_emails, _phones, _simple_matches, _aadhaar, _cards, _ibans)
+# Everything but the email scanner is decided by the value alone; the email one also needs to
+# know which domains this organisation calls its own.
+_SCANNERS = (_phones, _simple_matches, _aadhaar, _cards, _ibans)
 
 
-def _regex_scan(units: list[Unit]) -> list[Finding]:
+def _regex_scan(units: list[Unit], internal_domains: frozenset[str] = frozenset()) -> list[Finding]:
     findings: list[Finding] = []
     for unit in units:
         if unit.file_class == "generated":
             continue
+        findings += _emails(unit, internal_domains)
         for scanner in _SCANNERS:
             findings += scanner(unit)
     return findings
@@ -208,7 +213,8 @@ def _presidio_scan(units: list[Unit]) -> list[Finding]:
 
 
 def scan(units: list[Unit], cfg) -> list[Finding]:
-    findings = _regex_scan(units)
+    internal = frozenset(getattr(cfg, "pii_internal_domains", ()) or ())
+    findings = _regex_scan(units, internal)
     if getattr(cfg, "pii_engine", "regex") == "presidio":
         findings += _presidio_scan(units)
     return findings

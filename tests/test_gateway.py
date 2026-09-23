@@ -8,6 +8,20 @@ from zerotrace.gateway import sanitize
 
 from .conftest import Fake, rand
 
+# `.internal` is reserved for private networks, so this can never be a real
+# company - and unlike an `example.com` address it is not swallowed by the
+# placeholder filter, which is exactly the point of the test.
+INTERNAL_DOMAIN = "acme-corp.internal"
+
+
+@pytest.fixture
+def internal_domain(git_env, tmp_path, monkeypatch):
+    """A repo whose policy names one employee domain - what a real organisation configures."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".zerotrace.yml").write_text(
+        f"policy:\n  pii:\n    internal_domains: [{INTERNAL_DOMAIN}]\n", encoding="utf-8")
+    return INTERNAL_DOMAIN
+
 
 def run(*argv) -> int:
     with pytest.raises(SystemExit) as exit_info:
@@ -28,8 +42,8 @@ def test_sanitize_masks_pii_and_warns(git_env):
     assert "example.com" not in result.sanitized_text or result.verdict != "block"
 
 
-def test_sanitize_masks_an_internal_email(git_env):
-    email = "alice" + "@" + "bmwtechworks.in"
+def test_sanitize_masks_an_internal_email(git_env, internal_domain):
+    email = "alice" + "@" + internal_domain
     result = sanitize(f"contact: {email}")
     assert email not in result.sanitized_text
     assert result.verdict in ("warn", "block")
@@ -78,8 +92,8 @@ def test_injection_sharing_a_line_with_a_secret_is_still_masked():
     assert {"rulepack", "prompt_injection"} <= sources      # both recorded for the audit log
 
 
-def test_two_pii_values_on_one_line_are_both_replaced():
-    email = "priya.sharma" + "@" + "bmwtechworks" + ".in"   # internal domain -> high
+def test_two_pii_values_on_one_line_are_both_replaced(internal_domain):
+    email = "priya.sharma" + "@" + internal_domain         # a configured domain -> high
     phone = "+1-202-" + "555-01" + rand(2, "0123456789")   # built at run time, never a literal
     result = sanitize(f'contact {email} or {phone} urgently')
     assert email not in result.sanitized_text and phone not in result.sanitized_text

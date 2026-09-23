@@ -30,7 +30,7 @@ GENERATORS = {
     "github": lambda: "gh" + "p_" + _r(36),
     "aws_key_id": lambda: "AK" + "IA" + _r(16, "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"),
     "password": _password,
-    "internal_email": lambda: "priya.sharma" + "@" + "bmwtechworks.in",
+    "internal_email": lambda: "priya.sharma" + "@" + "acme-corp.internal",
     "qxid": lambda: "QX" + _r(5, string.ascii_uppercase + string.digits),
 }
 
@@ -79,7 +79,10 @@ def render(name: str, dest: str) -> None:
     for root, _dirs, files in os.walk(src):
         for fname in files:
             rel = os.path.relpath(os.path.join(root, fname), src)
-            target = os.path.join(dest, rel.replace("dot.env", ".env"))
+            # dot.* files are named that way so they are not hidden in the repository; the
+            # rendered demo repo needs them under their real names.
+            target = os.path.join(dest, rel.replace("dot.env", ".env")
+                                          .replace("dot.zerotrace.yml", ".zerotrace.yml"))
             os.makedirs(os.path.dirname(target), exist_ok=True)
             with open(os.path.join(root, fname), encoding="utf-8") as f:
                 text = f.read()
