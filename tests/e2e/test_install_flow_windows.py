@@ -19,7 +19,7 @@ def test_a_fresh_install_protects_the_machine_and_proves_it(machine):
     assert (machine.zerotrace_home / "venv").is_dir()
     assert "a staged credential was refused by the pre-commit hook" in printed
     assert "is protecting every repo on this machine" in printed
-    assert machine.git_global("core.hooksPath") == str(machine.zerotrace_home / "hooks")
+    assert machine.hooks_path() == machine.zerotrace_home / "hooks"
 
 
 def test_the_launcher_runs_from_cmd(machine):
@@ -33,7 +33,7 @@ def test_a_second_install_replaces_the_first(machine):
     machine.install("-Local", "-NoModel")
     again = machine.install("-Local", "-NoModel")
     assert "replacing the existing environment" in flat(again.stdout)
-    assert machine.git_global("core.hooksPath") == str(machine.zerotrace_home / "hooks")
+    assert machine.hooks_path() == machine.zerotrace_home / "hooks"
 
 
 def test_uninstall_removes_the_install_and_the_path_entry(machine):
@@ -41,7 +41,7 @@ def test_uninstall_removes_the_install_and_the_path_entry(machine):
     done = machine.run("cmd.exe", "/c", str(machine.uninstaller))
     assert done.returncode == 0, done.stdout + done.stderr
     assert not machine.zerotrace_home.exists()
-    assert machine.git_global("core.hooksPath") == ""
+    assert machine.hooks_path() is None
 
 
 def test_uninstalling_a_machine_that_never_had_it_says_so(machine):

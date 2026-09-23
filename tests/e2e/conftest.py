@@ -65,8 +65,12 @@ def machine(tmp_path, monkeypatch):
         "ZEROTRACE_MODEL_WAIT_SECONDS": "3",
     }
     # Whatever the developer running this has set for themselves must not decide the outcome.
+    # PSModulePath is in here for a specific reason: the CI step runs under PowerShell 7, whose
+    # module path Windows PowerShell 5.1 cannot use - inheriting it made `Get-FileHash`
+    # "not recognized" inside the installer. Unset, each PowerShell computes its own.
     for leak in ("ZEROTRACE_POLICY", "ZEROTRACE_EXTRAS", "ZEROTRACE_REF", "ZEROTRACE_ASCII",
-                 "ZEROTRACE_NO_MODIFY_PATH", "ZEROTRACE_LOGO", "NO_COLOR", "VIRTUAL_ENV"):
+                 "ZEROTRACE_NO_MODIFY_PATH", "ZEROTRACE_LOGO", "NO_COLOR", "VIRTUAL_ENV",
+                 "PSModulePath"):
         env.pop(leak, None)
     return Machine(home, env)
 
@@ -129,6 +133,16 @@ class Machine:
 
     def git_global(self, key: str) -> str:
         return self.run("git", "config", "--global", "--get", key).stdout.strip()
+
+    def hooks_path(self) -> Path | None:
+        """core.hooksPath as a Path.
+
+        git answers with forward slashes even on Windows, so comparing the raw string to one
+        built by pathlib fails on a machine where the install is perfectly fine. A Path knows
+        the two spellings are the same place.
+        """
+        value = self.git_global("core.hooksPath")
+        return Path(value) if value else None
 
     def rc_files(self) -> list[Path]:
         return [self.home / name for name in (".bashrc", ".zshrc", ".profile")]

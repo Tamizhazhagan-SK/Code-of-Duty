@@ -21,7 +21,7 @@ def test_a_fresh_install_protects_the_machine_and_proves_it(machine):
     # The install is only finished when a commit carrying a secret is actually refused.
     assert "a staged credential was refused by the pre-commit hook" in printed
     assert "is protecting every repo on this machine" in printed
-    assert machine.git_global("core.hooksPath") == str(machine.zerotrace_home / "hooks")
+    assert machine.hooks_path() == machine.zerotrace_home / "hooks"
 
 
 def test_the_installed_launcher_runs_without_anything_else_on_path(machine):
@@ -39,7 +39,7 @@ def test_a_second_install_replaces_the_first_without_stacking_path_lines(machine
     again = machine.install("--local", "--no-model")
     assert "replacing the existing environment" in flat(again.stdout)
     assert machine.marker_lines() == first, "re-installing must not append PATH lines again"
-    assert machine.git_global("core.hooksPath") == str(machine.zerotrace_home / "hooks")
+    assert machine.hooks_path() == machine.zerotrace_home / "hooks"
 
 
 def test_uninstall_removes_what_it_installed_and_nothing_else(machine):
@@ -56,7 +56,7 @@ def test_uninstall_removes_what_it_installed_and_nothing_else(machine):
 
     assert not machine.zerotrace_home.exists()
     assert not machine.launcher.exists()
-    assert machine.git_global("core.hooksPath") == ""
+    assert machine.hooks_path() is None
     assert machine.marker_lines() == 0
     left = mine.read_text(encoding="utf-8")
     assert "# added by some other tool" in left, "another tool's PATH line was removed"
@@ -94,7 +94,7 @@ def test_a_tampered_wheel_is_refused_and_nothing_is_installed(machine, release_a
     done = machine.install("--from", str(bad), "--no-model", expect=1)
     assert "does not match its SHA256SUMS entry" in flat(done.stdout + done.stderr)
     assert not (machine.zerotrace_home / "venv").exists()
-    assert machine.git_global("core.hooksPath") == ""
+    assert machine.hooks_path() is None
 
 
 def test_a_failed_install_puts_the_previous_one_back(machine, release_assets, tmp_path):

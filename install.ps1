@@ -511,7 +511,16 @@ New-Item -ItemType Directory -Force -Path $HomeDir | Out-Null
 Set-Content -Path $LogFile -Value "" -Encoding UTF8
 
 function Get-Sha256([string]$Path) {
-    return (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLower()
+    # .NET rather than Get-FileHash: that cmdlet lives in a module, and a machine whose
+    # PSModulePath points somewhere else answers "the term Get-FileHash is not recognized" -
+    # at which point an installer that verifies downloads cannot verify anything. The type
+    # below is part of the runtime itself and is there on 5.1 and 7 alike.
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try { $bytes = $sha.ComputeHash($stream) } finally { $stream.Dispose() }
+    } finally { $sha.Dispose() }
+    return (($bytes | ForEach-Object { $_.ToString("x2") }) -join "")
 }
 
 function Test-AgainstSums([string]$Dir, [string]$Name) {
@@ -727,12 +736,18 @@ try {
         } finally { `$key.Close() }
     }
 } catch { }
-if (Test-Path `$binDir) {
-    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path `$binDir 'zerotrace.cmd')
-    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path `$binDir 'zerotrace-uninstall.cmd')
-}
+Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path `$binDir 'zerotrace.cmd')
+# Everything except the directory this uninstall is being RUN from. cmd.exe reads a batch file
+# line by line as it runs, so deleting zerotrace-uninstall.cmd out from under itself ends with
+# "The batch file cannot be found" and a non-zero exit after a successful removal. The launcher
+# deletes its own directory as its last act instead (see the .cmd below).
 if (Test-Path `$homeDir) {
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue `$homeDir
+    Get-ChildItem -LiteralPath `$homeDir -Force |
+        Where-Object { `$_.FullName -ne `$binDir } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    if (`$binDir -notlike "`$homeDir*") {
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue `$homeDir
+    }
     Write-Host "zerotrace: removed `$homeDir"
 }
 Write-Host 'zerotrace: your repositories, their history and their files were not touched.'
@@ -743,6 +758,17 @@ if (-not `$Purge) {
 $uninstallPs1Path = Join-Path $BinDir "zerotrace-uninstall.ps1"
 Set-Content -Path $uninstallPs1Path -Value $uninstallPs1 -Encoding UTF8
 
+# What the launcher deletes as its last act - the part the uninstall itself cannot remove
+# while it is running. In the default layout the launchers live inside ~/.zerotrace, so the
+# whole directory goes; with a custom ZEROTRACE_BIN_DIR it is somebody else's directory (a
+# ~/bin full of other tools), and only our own three files may be touched.
+if ($BinDir -like "$HomeDir*") {
+    $sweep = "rd /s /q ""$HomeDir"""
+} else {
+    $sweep = "del /q ""$(Join-Path $BinDir 'zerotrace.cmd')"" ""$uninstallPs1Path"" " +
+             """$(Join-Path $BinDir 'zerotrace-uninstall.cmd')"""
+}
+
 $uninstallCmd = @"
 @echo off
 rem $Marker
@@ -751,6 +777,11 @@ set "ZT_PURGE="
 if /I "%~1"=="--purge" set "ZT_PURGE=-Purge"
 if /I "%~1"=="-Purge" set "ZT_PURGE=-Purge"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$uninstallPs1Path" %ZT_PURGE%
+endlocal
+rem Last: stop cmd.exe reading this file, then delete the directory it is sitting in. `(goto)`
+rem with no label closes the batch context - the rest of the line still runs, and nothing tries
+rem to read a file that no longer exists.
+(goto) 2>nul & $sweep
 "@
 Set-Content -Path (Join-Path $BinDir "zerotrace-uninstall.cmd") -Value $uninstallCmd -Encoding ASCII
 Write-Ok (Join-Path $BinDir "zerotrace.cmd")
