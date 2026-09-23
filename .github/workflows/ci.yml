@@ -48,13 +48,16 @@ jobs:
       # The build backend comes from the lock too, so the wheel is built with --no-isolation.
       - run: 'python -m pip install --require-hashes --only-binary :all: -r requirements/runtime.txt'
       - run: python -m build --no-isolation
-      - name: The wheel must carry the rule pack and eval cases
+      - name: The wheel must carry the rule pack, eval cases and compose file
         run: |
           python - <<'PY'
           import glob, zipfile
           names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
           for needed in ("zerotrace/detectors/rules/default.yml",
-                         "zerotrace/evals/classifier_cases.jsonl"):
+                         "zerotrace/evals/classifier_cases.jsonl",
+                         # `zerotrace model up` has to work without a clone
+                         "zerotrace/docker/docker-compose.yml",
+                         "zerotrace/docker/ollama-entrypoint.sh"):
               assert needed in names, needed
           print("wheel contents ok")
           PY

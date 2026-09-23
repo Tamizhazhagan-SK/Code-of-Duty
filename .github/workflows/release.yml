@@ -197,14 +197,17 @@ jobs:
       - name: Build sdist and wheel
         run: python -m build --no-isolation     # build + hatchling come from requirements/dev.txt
 
-      - name: Wheel must carry the rule pack and eval cases
+      - name: Wheel must carry the rule pack, eval cases and compose file
         run: |
           python - <<'PY'
           import glob
           import zipfile
           names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
           for needed in ("zerotrace/detectors/rules/default.yml",
-                         "zerotrace/evals/classifier_cases.jsonl"):
+                         "zerotrace/evals/classifier_cases.jsonl",
+                         # `zerotrace model up` has to work without a clone
+                         "zerotrace/docker/docker-compose.yml",
+                         "zerotrace/docker/ollama-entrypoint.sh"):
               assert needed in names, needed
           print("wheel contents ok")
           PY

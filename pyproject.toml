@@ -63,6 +63,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/zerotrace"]
 
+# The compose file that runs the local model travels with the package: `zerotrace model up`
+# has to work on a machine that installed from a release and has no clone. The repo keeps it
+# at docker/ so `docker compose -f docker/docker-compose.yml` still works in a checkout.
+[tool.hatch.build.targets.wheel.force-include]
+"docker/docker-compose.yml" = "zerotrace/docker/docker-compose.yml"
+"docker/ollama-entrypoint.sh" = "zerotrace/docker/ollama-entrypoint.sh"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
