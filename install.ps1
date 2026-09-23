@@ -4,7 +4,7 @@
   ZeroTrace installer for Windows.
 
 .DESCRIPTION
-  irm https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 | iex
+  irm https://raw.githubusercontent.com/getzerotrace/zerotrace/main/install.ps1 | iex
 
   Does what install.sh does, in the same six steps and with the same layout on disk: checks
   the machine, builds a virtualenv that belongs to ZeroTrace alone, then hands over to
@@ -38,11 +38,11 @@
   Skip the Docker and model step. The guardrail is installed either way.
 
 .EXAMPLE
-  irm https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 | iex
+  irm https://raw.githubusercontent.com/getzerotrace/zerotrace/main/install.ps1 | iex
 
 .EXAMPLE
   # Options need the script on disk - `iex` cannot pass arguments.
-  irm https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -OutFile i.ps1
+  irm https://raw.githubusercontent.com/getzerotrace/zerotrace/main/install.ps1 -OutFile i.ps1
   .\i.ps1 -Version v0.3.0
 
 .NOTES
@@ -72,7 +72,7 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 
 $Repo = $(if ($env:ZEROTRACE_REPO_URL) { $env:ZEROTRACE_REPO_URL }
-          else { "https://github.com/Tamizhazhagan-SK/Code-of-Duty" })
+          else { "https://github.com/getzerotrace/zerotrace" })
 $HomeDir = $(if ($env:ZEROTRACE_HOME) { $env:ZEROTRACE_HOME }
              else { Join-Path $env:USERPROFILE ".zerotrace" })
 $BinDir = $(if ($env:ZEROTRACE_BIN_DIR) { $env:ZEROTRACE_BIN_DIR } else { Join-Path $HomeDir "bin" })

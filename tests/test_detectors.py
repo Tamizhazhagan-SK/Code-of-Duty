@@ -285,7 +285,7 @@ def test_stored_hashes_are_not_treated_as_secrets():
 
 def test_word_like_identifiers_are_not_credentials():
     """A weak name ("...Key") plus a human-written value is a name, not a secret."""
-    assert _scan(".vscode/settings.json", '    "projectKey": "Tamizhazhagan-SK_Code-of-Duty"') == []
+    assert _scan(".vscode/settings.json", '    "projectKey": "getzerotrace_zerotrace"') == []
     assert _scan("app.yml", "  cluster_key: acme-prod-cluster-eu-west") == []
     # A strong name or a random value still blocks.
     assert _scan("app.py", f'api_key = "{rand(24)}9aZ"')

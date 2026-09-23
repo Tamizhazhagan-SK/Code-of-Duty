@@ -81,7 +81,9 @@ def test_bump_writes_one_version_everywhere_and_cuts_the_changelog(project):
 
     changelog = (project / "CHANGELOG.md").read_text(encoding="utf-8")
     assert f"## [Unreleased]\n\n## [{new}] - 2026-10-01\n### Fixed\n- A fix worth releasing." in changelog
-    repo = "https://github.com/Tamizhazhagan-SK/Code-of-Duty"
+    # Read, not repeated: the project has been renamed once already, and a test that carries
+    # its own copy of the URL fails for a reason that has nothing to do with the release.
+    repo = release._repo_url(project)
     assert f"[Unreleased]: {repo}/compare/v{new}...HEAD" in changelog
     assert f"[{new}]: {repo}/compare/v{old}...v{new}" in changelog
     assert f"## [{old}] - " in changelog, "earlier sections are kept"

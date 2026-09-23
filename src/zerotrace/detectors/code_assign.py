@@ -69,7 +69,7 @@ _EXCLUDE_LAST = {
 _EXCLUDE_FIRST = {"is", "has", "show", "hide", "toggle", "validate", "check", "get", "set",
                   "on", "handle", "use", "min", "max", "num", "no", "project", "public",
                   "sort", "primary", "foreign", "partition", "cache", "map", "index"}
-# Word-like identifiers ("Tamizhazhagan-SK_Code-of-Duty", "acme-prod-cluster"): human-written
+# Word-like identifiers ("getzerotrace_zerotrace", "acme-prod-cluster"): human-written
 # names, not key material. Only used to reject WEAK matches such as a bare "key" in the name.
 _NAME_LIKE_RE = re.compile(r"\A[A-Za-z0-9]+(?:[-_.][A-Za-z0-9]+){1,}\Z")
 _BOOLISH = {"true", "false", "yes", "no", "on", "off", "null", "none", "nil", "undefined"}

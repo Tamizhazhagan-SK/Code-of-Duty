@@ -29,10 +29,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Tamizhazhagan-SK/Code-of-Duty"
-Repository = "https://github.com/Tamizhazhagan-SK/Code-of-Duty"
-Issues = "https://github.com/Tamizhazhagan-SK/Code-of-Duty/issues"
-Changelog = "https://github.com/Tamizhazhagan-SK/Code-of-Duty/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/getzerotrace/zerotrace"
+Repository = "https://github.com/getzerotrace/zerotrace"
+Issues = "https://github.com/getzerotrace/zerotrace/issues"
+Changelog = "https://github.com/getzerotrace/zerotrace/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 # NER-based PII (Presidio + spaCy). Heavy, so opt-in: `policy.pii.engine: presidio`.

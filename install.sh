@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ZeroTrace installer - macOS, Linux, WSL and Git Bash.
 #
-#   install:    curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
+#   install:    curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/getzerotrace/zerotrace/main/install.sh | bash
 #   uninstall:  zerotrace-uninstall        (or: ./install.sh --uninstall)
 #
 # What it does, in six steps: checks this machine, builds an environment that belongs to
@@ -41,7 +41,7 @@ if [ -z "${HOME:-}" ]; then
   exit 1
 fi
 
-REPO_URL="${ZEROTRACE_REPO_URL:-https://github.com/Tamizhazhagan-SK/Code-of-Duty}"
+REPO_URL="${ZEROTRACE_REPO_URL:-https://github.com/getzerotrace/zerotrace}"
 REF="${ZEROTRACE_REF:-}"
 EXTRAS="${ZEROTRACE_EXTRAS:-}"
 HOME_DIR="${ZEROTRACE_HOME:-$HOME/.zerotrace}"
@@ -73,7 +73,7 @@ usage() {
   cat <<'USAGE'
 ZeroTrace installer
 
-  curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
+  curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/getzerotrace/zerotrace/main/install.sh | bash
 
 From a clone it installs that clone; otherwise the latest published release.
 

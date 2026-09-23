@@ -19,7 +19,7 @@ git config --local user.name "Your Name" && git config --local user.email "you@c
 
 # or, for every repository whose remote belongs to this account (git 2.36+):
 #   ~/.gitconfig
-#   [includeIf "hasconfig:remote.*.url:git@github.com:Tamizhazhagan-SK/**"]
+#   [includeIf "hasconfig:remote.*.url:git@github.com:getzerotrace/**"]
 #       path = ~/.config/git/work.gitconfig
 ```
 
@@ -30,11 +30,10 @@ the account you are actually authenticated as.
 
 ## Dev setup
 
-This repo is currently private, so clone it with your own git credentials first, then
-either run the bootstrap script or set up manually.
+Clone it, then either run the bootstrap script or set up manually.
 
 ```bash
-git clone https://github.com/Tamizhazhagan-SK/Code-of-Duty.git && cd Code-of-Duty
+git clone https://github.com/getzerotrace/zerotrace.git && cd zerotrace
 ./scripts/dev_bootstrap.sh          # macOS/Linux - venv, editable install, hook, doctor, tests
 .\scripts\dev_bootstrap.ps1         # Windows, same steps
 ```

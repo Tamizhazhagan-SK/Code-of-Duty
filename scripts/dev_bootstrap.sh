@@ -5,8 +5,8 @@
 # don't work anonymously. Run this instead, from a checkout you already have
 # access to via your own git credentials (SSH key or cached HTTPS token):
 #
-#   git clone https://github.com/Tamizhazhagan-SK/Code-of-Duty.git
-#   cd Code-of-Duty
+#   git clone https://github.com/getzerotrace/zerotrace.git
+#   cd zerotrace
 #   ./scripts/dev_bootstrap.sh
 #
 # Sets up .venv, installs the locked dev dependencies and zerotrace (editable), enables the

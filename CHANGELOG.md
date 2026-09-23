@@ -237,6 +237,6 @@ First public release.
 - Secrets other than AWS/PEM could reach the model unredacted.
 - The interactive menu never appeared under the pre-commit framework.
 
-[Unreleased]: https://github.com/Tamizhazhagan-SK/Code-of-Duty/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/Tamizhazhagan-SK/Code-of-Duty/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/Tamizhazhagan-SK/Code-of-Duty/releases/tag/v0.1.0
+[Unreleased]: https://github.com/getzerotrace/zerotrace/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/getzerotrace/zerotrace/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/getzerotrace/zerotrace/releases/tag/v0.1.0

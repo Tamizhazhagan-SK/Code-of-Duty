@@ -1,6 +1,6 @@
 # ZeroTrace: Secret & PII Guardrail for Commits and AI Agents
 
-[![CI](https://github.com/Tamizhazhagan-SK/Code-of-Duty/actions/workflows/ci.yml/badge.svg)](https://github.com/Tamizhazhagan-SK/Code-of-Duty/actions/workflows/ci.yml)
+[![CI](https://github.com/getzerotrace/zerotrace/actions/workflows/ci.yml/badge.svg)](https://github.com/getzerotrace/zerotrace/actions/workflows/ci.yml)
 [![License: Apache-2.0](<https://img.shields.io/badge/License-Apache%202.0-blue.svg>)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
@@ -26,18 +26,17 @@ not offer a per-repo/opt-in install, because a security control that only some r
 control that gives a false sense of safety - the one repo nobody protected is the one the leak
 happens in.
 
-**This repo is private today** (org-only access is the plan). Anonymous one-liners against
-`raw.githubusercontent.com` 404 on private/internal repos, so contributors use `git clone`
-instead - it already works with your own git credentials (SSH key or a cached HTTPS token),
-the same way `git pull`/`git push` already do for you:
+The single-command installers below install the **latest published release**, verifying every
+file they download against that release's `SHA256SUMS`. To work on ZeroTrace itself, clone it
+and run the bootstrap instead:
 
 ```bash
 # macOS / Linux
-git clone https://github.com/Tamizhazhagan-SK/Code-of-Duty.git && cd Code-of-Duty && ./scripts/dev_bootstrap.sh
+git clone https://github.com/getzerotrace/zerotrace.git && cd zerotrace && ./scripts/dev_bootstrap.sh
 ```
 ```powershell
 # Windows
-git clone https://github.com/Tamizhazhagan-SK/Code-of-Duty.git; cd Code-of-Duty; .\scripts\dev_bootstrap.ps1
+git clone https://github.com/getzerotrace/zerotrace.git; cd zerotrace; .\scripts\dev_bootstrap.ps1
 ```
 
 `scripts/dev_bootstrap.sh`/`.ps1` set up `.venv`, install ZeroTrace in editable dev mode, run
@@ -45,18 +44,14 @@ git clone https://github.com/Tamizhazhagan-SK/Code-of-Duty.git; cd Code-of-Duty;
 verifies a checkout the same way. See [CONTRIBUTING.md](CONTRIBUTING.md) for the rest of the
 dev workflow.
 
-Once this repo is public (or org-visible with an auth-aware fetch), the single-command
-installers below work without a manual clone. Each one installs the **latest published
-release**, verifying every file it downloads against that release's `SHA256SUMS`:
-
 ```bash
 # macOS / Linux / WSL - no pip, pipx or uv required; bootstraps Python if it is missing
-curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.sh | bash
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/getzerotrace/zerotrace/main/install.sh | bash
 ```
 
 ```powershell
 # Windows - no pip, pipx or uv required; bootstraps Python if it is missing
-iwr https://raw.githubusercontent.com/Tamizhazhagan-SK/Code-of-Duty/main/install.ps1 -useb | iex
+iwr https://raw.githubusercontent.com/getzerotrace/zerotrace/main/install.ps1 -useb | iex
 ```
 
 The installer walks six steps and says what each one found:

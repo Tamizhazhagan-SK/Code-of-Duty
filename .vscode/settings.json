@@ -2,7 +2,7 @@
   // SonarQube for IDE (VS Code / VS Codium). Bind this folder to the cloud project so the
   // editor shows the same issues and the same quality profile as CI:
   //   1. Command Palette > "SonarQube: Add SonarQube Cloud Connection" (generate a token when asked)
-  //   2. Command Palette > "SonarQube: Bind to SonarQube Project" > pick Code-of-Duty
+  //   2. Command Palette > "SonarQube: Bind to SonarQube Project" > pick zerotrace
   // Binding writes .sonarlint/connectedMode.json; the token stays in the editor's secure storage.
   "sonarlint.analyzerProperties": {
     "sonar.python.version": "3.11,3.12"
@@ -20,6 +20,6 @@
   },
   "sonarlint.connectedMode.project": {
     "connectionId": "tamizh-sk",
-    "projectKey": "Tamizhazhagan-SK_Code-of-Duty"
+    "projectKey": "getzerotrace_zerotrace"
   }
 }
