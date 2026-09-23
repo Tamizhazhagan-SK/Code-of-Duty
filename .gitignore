@@ -22,8 +22,20 @@ models/
 .zerotrace-cache/
 .zerotrace/
 
+# --- internal material (kept beside the repo, never in it) ---
+# The hackathon use-case document and the team plan name people and internal systems. They
+# live in ../zerotrace-internal/; these patterns stop a copy walking back in.
+*.pdf
+docs/TEAM_PLAN.md
+
+# --- editor / OS noise ---
+.DS_Store
+.idea/
+*.swp
+
 # --- python ---
 .venv/
+wheelhouse/
 __pycache__/
 *.pyc
 .mypy_cache/
