@@ -59,6 +59,9 @@ class Config:
     block_severity: tuple[str, ...] = ("critical", "high")
     warn_severity: tuple[str, ...] = ("medium",)
     pii_locales: tuple[str, ...] = ("en", "en_IN")
+    # Employee/internal email domains. Empty by default and set by the organisation, because
+    # a list of a company's domains is the company's own data, not a detail of this tool.
+    pii_internal_domains: tuple[str, ...] = ()
     pii_engine: str = "regex"              # regex | presidio (needs the [pii-ner] extra)
     action_in_tests: str = "replace_synthetic"
     action_in_config: str = "env_reference"
@@ -194,6 +197,8 @@ def _policy_config(policy: dict) -> dict:
         "block_severity": _block_severity(policy),
         "warn_severity": tuple(policy.get("warn_severity", ["medium"])),
         "pii_locales": tuple(pii.get("locales", ["en", "en_IN"])),
+        "pii_internal_domains": tuple(str(domain).strip().lower()
+                                      for domain in pii.get("internal_domains", [])),
         "pii_engine": str(pii.get("engine", "regex")),
         "action_in_tests": str(pii.get("action_in_tests", "replace_synthetic")),
         "action_in_config": str(pii.get("action_in_config", "env_reference")),

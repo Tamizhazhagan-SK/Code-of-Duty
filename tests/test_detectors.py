@@ -18,9 +18,17 @@ def _uri(scheme: str, user: str, password: str, host: str = "db.internal:5432/ap
     return scheme + "://" + user + ":" + password + "@" + host
 
 
-def _scan(path: str, text: str):
+# An organisation's own email domains are policy, not something this tool knows (see
+# policy.pii.internal_domains); the tests configure one rather than naming a real company.
+# `.internal` is reserved for private networks, so this can never be a real
+# company - and unlike an `example.com` address it is not swallowed by the
+# placeholder filter, which is exactly the point of the test.
+INTERNAL_DOMAIN = "acme-corp.internal"
+
+
+def _scan(path: str, text: str, **settings):
     u = [_unit(path, text)]
-    cfg = Config()
+    cfg = Config(**settings)
     return postprocess(rulepack.scan(u, cfg) + code_assign.scan(u, cfg) + pii.scan(u, cfg), cfg)
 
 
@@ -216,8 +224,9 @@ def test_checksums():
 
 
 def test_pii_findings():
-    email = "jane.doe" + "@" + "bmwtechworks.in"
-    rules = {f.rule_id for f in _scan("src/users.py", f'owner = "{email}"')}
+    email = "jane.doe" + "@" + INTERNAL_DOMAIN
+    rules = {f.rule_id for f in _scan("src/users.py", f'owner = "{email}"',
+                                      pii_internal_domains=(INTERNAL_DOMAIN,))}
     assert "pii_email_internal" in rules
     aadhaar = _verhoeff_complete("2" + rand(10, "0123456789"))
     pan = "ABC" + "PE" + "1234" + "F"
@@ -343,3 +352,14 @@ def test_composed_finding_asks_for_a_manual_fix():
     proposal = proposer.propose(Decision("block", "critical", "", finding), "reference", Config())
     assert proposal.mode == "manual" and proposal.new_line is None
     assert "rotate" in proposal.note.lower()
+
+
+def test_an_email_is_only_internal_when_the_policy_says_the_domain_is(tmp_path):
+    """The severity of an employee address is an organisation's decision. With no configured
+    domains - the default - it is an ordinary email, not a staff-identity leak."""
+    email = "jane.doe" + "@" + INTERNAL_DOMAIN
+    line = f'owner = "{email}"'
+    assert "pii_email_internal" not in {f.rule_id for f in _scan("src/users.py", line)}
+    configured = _scan("src/users.py", line, pii_internal_domains=(INTERNAL_DOMAIN,))
+    (finding,) = [f for f in configured if f.rule_id == "pii_email_internal"]
+    assert finding.severity == "high"

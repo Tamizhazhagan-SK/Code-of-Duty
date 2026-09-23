@@ -16,6 +16,12 @@ enabled: true
 
 policy:
   block_severity: [critical, high]
+  pii:
+    # Your organisation's employee domains. An address at one of these is a staff identity,
+    # which is worth more to an attacker than a generic email, so it is graded HIGH instead of
+    # MEDIUM. ZeroTrace ships this list empty on purpose: which domains are yours is your data,
+    # not something a security tool should carry in its source.
+    internal_domains: [acme-corp.internal, mail.acme-corp.internal]
 
 model:
   runtime: openai                       # or "ollama" for per-laptop local inference

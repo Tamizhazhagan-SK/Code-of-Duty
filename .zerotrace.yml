@@ -23,6 +23,10 @@ policy:
   warn_severity: [medium]
   pii:
     locales: [en, en_IN]       # Aadhaar (Verhoeff) / PAN recognizers
+    # Employee domains, which make a staff address HIGH instead of MEDIUM. Empty here on
+    # purpose: a company's domain list is its own data, so a fleet sets it in the org policy
+    # (deploy/policy.example.yml), not in a public repository.
+    internal_domains: []
     action_in_tests: replace_synthetic
     action_in_config: env_reference
 exceptions:
