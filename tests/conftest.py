@@ -3,6 +3,7 @@ realistic-looking secret (and neither ZeroTrace nor GitHub push protection trips
 import json
 import os
 import secrets
+import shutil
 import string
 import subprocess
 import sys
@@ -215,24 +216,26 @@ def fake_docker(tmp_path, monkeypatch):
     return FakeDocker(state_file, log_file)
 
 
+def is_docker_name(name: str) -> bool:
+    return os.path.basename(str(name)).lower().split(".")[0] == "docker"
+
+
 @pytest.fixture
 def no_docker(monkeypatch):
     """A machine with no Docker - and everything else still there.
 
-    Emptying PATH would also take git away, which is not "no Docker", it is "no machine", and
-    it makes a test fail for a reason the test is not about. So drop only the directories that
-    actually hold a docker binary.
+    Removing PATH entries is what an earlier version did, and it was wrong: on a Linux runner
+    `docker` lives in /usr/bin next to `git`, so "no Docker" quietly became "no git" and seven
+    tests failed for a reason none of them was about. The lookup itself is what gets an answer
+    of None, for docker and nothing else.
     """
-    keep = []
-    for directory in os.environ.get("PATH", "").split(os.pathsep):
-        if not directory:
-            continue
-        candidates = ("docker", "docker.exe", "docker.bat", "docker.cmd")
-        if any(os.path.exists(os.path.join(directory, name)) for name in candidates):
-            continue
-        keep.append(directory)
-    monkeypatch.setenv("PATH", os.pathsep.join(keep))
-    return keep
+    real_which = shutil.which
+
+    def which(cmd, *args, **kwargs):
+        return None if is_docker_name(cmd) else real_which(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "which", which)
+    return which
 
 
 class FakeOllama:

@@ -8,7 +8,6 @@ one that says so.
 """
 import json
 import os
-import shutil
 import sys
 
 
@@ -37,14 +36,33 @@ def _with_fake_docker(machine, tmp_path, **state) -> None:
     machine.env["FAKE_DOCKER_LOG"] = str(tmp_path / "fake-docker.log")
 
 
-def _without_docker(machine) -> None:
-    keep = [directory for directory in machine.env["PATH"].split(os.pathsep)
-            if directory and not shutil.which("docker", path=directory)]
-    machine.env["PATH"] = os.pathsep.join(keep)
+def _without_docker(machine, tmp_path) -> None:
+    """A PATH with everything on it except docker.
+
+    Dropping the PATH entries that contain a docker binary is the obvious approach and the
+    wrong one: on a Linux runner `docker` sits in /usr/bin next to `git`, so "no Docker"
+    silently becomes "no git". This links every executable into one directory instead, and
+    leaves exactly one of them out.
+    """
+    farm = tmp_path / "path-without-docker"
+    farm.mkdir(exist_ok=True)
+    for directory in machine.env["PATH"].split(os.pathsep):
+        if not directory or not os.path.isdir(directory):
+            continue
+        for name in os.listdir(directory):
+            if name.lower().split(".")[0] == "docker":
+                continue
+            link = farm / name
+            if not link.exists():
+                try:
+                    link.symlink_to(os.path.join(directory, name))
+                except OSError:          # a name we cannot link is a name we can do without
+                    continue
+    machine.env["PATH"] = str(farm)
 
 
-def test_no_docker_still_installs_a_working_guardrail(machine):
-    _without_docker(machine)
+def test_no_docker_still_installs_a_working_guardrail(machine, tmp_path):
+    _without_docker(machine, tmp_path)
     done = machine.install("--local")
     printed = flat(done.stdout)
     assert "Docker is not installed" in printed
@@ -99,7 +117,9 @@ def test_model_status_after_an_install_explains_the_same_thing(machine, tmp_path
     printed = flat(status.stdout)
     assert status.returncode == 1, "not usable is an exit code a script can act on"
     assert "daemon is not running" in printed
-    assert "start Docker" in printed
+    # How you start a daemon differs per OS (Docker Desktop, the Start menu, systemctl); the
+    # command that finishes the job is the same everywhere.
+    assert "zerotrace model up" in printed
 
 
 def test_uninstall_stops_the_container_but_keeps_the_gigabytes(machine, tmp_path):

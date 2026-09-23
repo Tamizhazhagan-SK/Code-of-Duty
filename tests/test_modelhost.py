@@ -190,6 +190,10 @@ def test_down_on_a_machine_with_no_docker_is_not_an_error(cfg, no_docker):
 def test_a_remote_endpoint_is_never_started_locally(cfg, fake_docker, monkeypatch, tmp_path):
     monkeypatch.setenv("ZEROTRACE_MODEL_ENDPOINT", "https://models.example.com")
     (tmp_path / ".zerotrace.yml").write_text("model:\n  allow_remote: true\n", encoding="utf-8")
+    # Asking a remote endpoint whether it answers is a real network call, and this suite makes
+    # none: the whole thing also runs under ci/no_egress.py, where any non-loopback connection
+    # is an error. What is under test here is that nothing local is started, not the socket.
+    monkeypatch.setattr(modelhost, "_endpoint_answers", lambda *args, **kwargs: False)
     remote = load_config()
     status = modelhost.probe(remote)
     assert status.local is False

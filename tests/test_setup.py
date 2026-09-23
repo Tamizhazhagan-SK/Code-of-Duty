@@ -69,7 +69,9 @@ def test_a_stopped_daemon_is_reported_once_with_the_fix(sandbox, fake_docker):
     outcome = _run()
     assert outcome.guardrail_ok
     assert "daemon is not running" in _rows(outcome)["docker"][1]
-    assert any("start Docker" in hint for hint in outcome.next_steps)
+    # The instruction itself is per-OS (`open -a Docker`, the Start menu, systemctl); what
+    # every one of them ends with is the command that finishes the job.
+    assert any("zerotrace model up" in hint for hint in outcome.next_steps)
     # The Docker row already carried the sentence; the model step must not repeat it.
     assert "model" not in _rows(outcome) or "daemon" not in _rows(outcome).get("model", ("", ""))[1]
 
